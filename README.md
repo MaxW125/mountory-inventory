@@ -6,7 +6,7 @@ The project intentionally uses a **minimal, transparent tech stack** to demonstr
 
 ---
 
-## 🚀 Features (V1)
+## Features (V1)
 
 ### Products
 - Create products with:
@@ -31,7 +31,7 @@ The project intentionally uses a **minimal, transparent tech stack** to demonstr
 
 ---
 
-## 🧰 Tech Stack
+## Tech Stack
 
 ### Backend
 - Python
@@ -50,7 +50,7 @@ The project intentionally uses a **minimal, transparent tech stack** to demonstr
 
 ---
 
-## 🏗 Architecture Overview
+## Architecture Overview
 
 - **PostgreSQL** stores all application data
 - **Raw SQL repositories** isolate all database access
@@ -61,7 +61,7 @@ The system is intentionally simple, readable, and easy to extend.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 mountory-inventory/
@@ -83,7 +83,7 @@ mountory-inventory/
 
 ---
 
-## ⚙️ Getting Started
+## Getting Started
 
 ### Prerequisites
 - Python 3.11+
@@ -96,40 +96,59 @@ mountory-inventory/
 
 Clone the repository:
 
+Using HTTPS:
 ```bash
 git clone https://github.com/MaxW125/mountory-inventory.git
 cd mountory-inventory
 ```
 
-Start PostgreSQL:
+Using SSH:
+```bash
+git clone git@github.com:MaxW125/mountory-inventory.git
+cd mountory-inventory
+```
 
+Start Docker containers:
 ```bash
 docker compose up -d
 ```
 
 Create and activate a virtual environment:
-
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 ```
 
 Install dependencies:
-
 ```bash
 pip install -r requirements.txt
 ```
 
 Run the server:
-
 ```bash
-python -m uvicorn server.main:app --reload
+python3 -m uvicorn server.main:app --reload
 ```
 
 Open in browser:
-
 ```
 http://127.0.0.1:8000/
+```
+
+### Shutting down:
+
+When you are done, stop the server in the terminal with:
+```bash
+Ctrl + C
+```
+
+Then stop Docker containers:
+```bash
+docker compose down
+```
+
+To deactivate the virtual environment:
+```bash
+deactivate
 ```
 
 ---
@@ -146,7 +165,7 @@ http://127.0.0.1:8000/
 
 ---
 
-## 🧭 Design Philosophy
+## Design Philosophy
 
 This project emphasizes:
 
@@ -160,7 +179,7 @@ The goal is correctness, clarity, and extensibility over abstraction.
 
 ---
 
-## 🗺 Roadmap (Planned)
+## TODO (Planned)
 
 - Attach materials directly to products (join table)
 - Automatically deduct material inventory when products are sold
@@ -172,6 +191,6 @@ The goal is correctness, clarity, and extensibility over abstraction.
 
 ---
 
-## 📜 License
+## License
 
 This project is intended for educational and portfolio purposes.
