@@ -153,7 +153,7 @@ deactivate
 
 ---
 
-## 🔌 API Endpoints (V1)
+## API Endpoints (V1)
 
 ### Products
 - `GET /api/products`
@@ -179,14 +179,15 @@ The goal is correctness, clarity, and extensibility over abstraction.
 
 ---
 
-## TODO (Planned)
+## TODO
 
+- Add authentication
+- Migrate frontend to React
 - Attach materials directly to products (join table)
 - Automatically deduct material inventory when products are sold
 - Cost calculation per product
 - Profit tracking
 - Low-stock alerts and reorder thresholds
-- Simple authentication
 - Deployment pipeline
 
 ---
