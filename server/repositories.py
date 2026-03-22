@@ -693,3 +693,171 @@ def delete_product_material(product_id: int, material_id: int):
         with conn.cursor() as cur:
             cur.execute(sql, (product_id, material_id))
             conn.commit()
+
+
+# -----------------------------
+# Purchase Orders
+# -----------------------------
+
+def list_purchase_orders():
+    """Return all purchase orders with computed total_cost."""
+    sql = """
+        SELECT
+            po.id,
+            po.po_number,
+            po.supplier,
+            po.status,
+            po.ordered_date,
+            po.received_date,
+            COALESCE(SUM(poi.quantity_ordered * poi.unit_cost), 0) AS total_cost
+        FROM purchase_orders po
+        LEFT JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
+        GROUP BY
+            po.id,
+            po.po_number,
+            po.supplier,
+            po.status,
+            po.ordered_date,
+            po.received_date
+        ORDER BY po.id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    return rows
+
+
+def create_purchase_order(po_number, supplier, status="Draft", ordered_date=None, received_date=None):
+    """Create a purchase order row and return its id."""
+    sql = """
+        INSERT INTO purchase_orders (
+            po_number,
+            supplier,
+            status,
+            ordered_date,
+            received_date
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_number, supplier, status, ordered_date, received_date))
+            po_id = cur.fetchone()[0]
+            conn.commit()
+
+    return po_id
+
+
+def update_purchase_order(po_id: int, po_number, supplier, status, ordered_date=None, received_date=None):
+    """Update core purchase order fields."""
+    sql = """
+        UPDATE purchase_orders
+        SET
+            po_number = %s,
+            supplier = %s,
+            status = %s,
+            ordered_date = %s,
+            received_date = %s
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_number, supplier, status, ordered_date, received_date, po_id))
+            conn.commit()
+
+
+def delete_purchase_order(po_id: int):
+    """Delete a purchase order row. Line items cascade automatically."""
+    sql = """
+        DELETE FROM purchase_orders
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id,))
+            conn.commit()
+
+
+def find_purchase_order_by_number(po_number: str):
+    """Return one purchase order row by PO number (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            po_number,
+            supplier,
+            status,
+            ordered_date,
+            received_date
+        FROM purchase_orders
+        WHERE LOWER(TRIM(po_number)) = LOWER(TRIM(%s))
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_number,))
+            row = cur.fetchone()
+
+    return row
+
+
+def list_purchase_order_items(po_id: int):
+    """Return all line items for one purchase order."""
+    sql = """
+        SELECT
+            poi.material_id,
+            m.name,
+            m.type,
+            m.color,
+            m.unit,
+            poi.quantity_ordered,
+            poi.unit_cost
+        FROM purchase_order_items poi
+        JOIN materials m ON m.id = poi.material_id
+        WHERE poi.purchase_order_id = %s
+        ORDER BY m.type, m.name, m.color;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id,))
+            rows = cur.fetchall()
+
+    return rows
+
+
+def upsert_purchase_order_item(po_id: int, material_id: int, quantity_ordered, unit_cost):
+    """Add or update one material line on a purchase order."""
+    sql = """
+        INSERT INTO purchase_order_items (purchase_order_id, material_id, quantity_ordered, unit_cost)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (purchase_order_id, material_id)
+        DO UPDATE SET
+            quantity_ordered = EXCLUDED.quantity_ordered,
+            unit_cost = EXCLUDED.unit_cost;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id, material_id, quantity_ordered, unit_cost))
+            conn.commit()
+
+
+def delete_purchase_order_item(po_id: int, material_id: int):
+    """Remove one material line from a purchase order."""
+    sql = """
+        DELETE FROM purchase_order_items
+        WHERE purchase_order_id = %s AND material_id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id, material_id))
+            conn.commit()

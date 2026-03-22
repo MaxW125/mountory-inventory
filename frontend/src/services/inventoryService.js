@@ -197,13 +197,80 @@ export async function getTotalInventoryValue() {
   }, 0);
 }
 
-// Placeholder sections for future backend expansion
+// Purchase Orders
 export async function getPurchaseOrders() {
-  return [];
+  return fetchJson('/api/purchase-orders');
+}
+
+export async function createPurchaseOrder(order) {
+  const payload = {
+    po_number: order.po_number?.trim() || "",
+    supplier: order.supplier?.trim() || "",
+    status: order.status?.trim() || "Draft",
+    ordered_date: order.ordered_date || null,
+    received_date: order.received_date || null,
+  };
+
+  return fetchJson('/api/purchase-orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updatePurchaseOrder(poId, order) {
+  const payload = {
+    po_number: order.po_number?.trim() || "",
+    supplier: order.supplier?.trim() || "",
+    status: order.status?.trim() || "Draft",
+    ordered_date: order.ordered_date || null,
+    received_date: order.received_date || null,
+  };
+
+  return fetchJson(`/api/purchase-orders/${poId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deletePurchaseOrder(poId) {
+  return fetchJson(`/api/purchase-orders/${poId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getPurchaseOrderItems(poId) {
+  return fetchJson(`/api/purchase-orders/${poId}/items`);
+}
+
+export async function savePurchaseOrderItem(poId, materialId, quantityOrdered, unitCost) {
+  return fetchJson(`/api/purchase-orders/${poId}/items`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      material_id: materialId,
+      quantity_ordered: Number(quantityOrdered || 0),
+      unit_cost: Number(unitCost || 0),
+    }),
+  });
+}
+
+export async function removePurchaseOrderItem(poId, materialId) {
+  return fetchJson(`/api/purchase-orders/${poId}/items/${materialId}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function getOpenOrderCount() {
-  return 0;
+  const orders = await getPurchaseOrders();
+  return orders.filter((order) => order.status === 'Draft' || order.status === 'Ordered').length;
 }
 
 export async function getRecentActivity() {

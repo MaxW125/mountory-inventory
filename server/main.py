@@ -32,6 +32,14 @@ from server.repositories import (
     list_product_materials,
     upsert_product_material,
     delete_product_material,
+    list_purchase_orders,
+    create_purchase_order,
+    update_purchase_order,
+    delete_purchase_order,
+    find_purchase_order_by_number,
+    list_purchase_order_items,
+    upsert_purchase_order_item,
+    delete_purchase_order_item,
 )
 
 
@@ -452,4 +460,163 @@ def upsert_product_bom_line(product_id: int, payload: dict):
 @app.delete("/api/products/{product_id}/materials/{material_id}")
 def delete_product_bom_line(product_id: int, material_id: int):
     delete_product_material(product_id, material_id)
+    return {"ok": True}
+
+# Purchase Orders
+@app.get("/api/purchase-orders")
+def get_purchase_orders():
+    rows = list_purchase_orders()
+
+    orders = []
+    for row in rows:
+        orders.append(
+            {
+                "id": row[0],
+                "po_number": row[1],
+                "supplier": row[2],
+                "status": row[3],
+                "ordered_date": row[4].isoformat() if row[4] else None,
+                "received_date": row[5].isoformat() if row[5] else None,
+                "total_cost": str(row[6]),
+            }
+        )
+
+    return orders
+
+
+@app.post("/api/purchase-orders")
+def create_purchase_order_api(payload: dict):
+    po_number = (payload.get("po_number") or "").strip() or None
+    supplier = (payload.get("supplier") or "").strip() or None
+    status = (payload.get("status") or "Draft").strip()
+    ordered_date = payload.get("ordered_date") or None
+    received_date = payload.get("received_date") or None
+
+    if status != "Draft" and not po_number:
+        raise HTTPException(status_code=400, detail="PO number is required unless the order is still in Draft.")
+
+    if status != "Draft" and not supplier:
+        raise HTTPException(status_code=400, detail="Supplier is required unless the order is still in Draft.")
+    if status in {"Ordered", "Received"} and not ordered_date:
+        raise HTTPException(status_code=400, detail="Ordered date is required once the purchase order is Ordered or Received.")
+    if status == "Received" and not received_date:
+        raise HTTPException(status_code=400, detail="Received date is required once the purchase order is Received.")
+    if ordered_date and received_date and received_date < ordered_date:
+        raise HTTPException(status_code=400, detail="Received date cannot be earlier than ordered date.")
+
+    if po_number:
+        existing = find_purchase_order_by_number(po_number)
+        if existing:
+            raise HTTPException(status_code=400, detail="A purchase order with this PO number already exists.")
+
+    po_id = create_purchase_order(
+        po_number=po_number,
+        supplier=supplier,
+        status=status,
+        ordered_date=ordered_date,
+        received_date=received_date,
+    )
+
+    return {"id": po_id}
+
+
+@app.patch("/api/purchase-orders/{po_id}")
+def update_purchase_order_api(po_id: int, payload: dict):
+    po_number = (payload.get("po_number") or "").strip() or None
+    supplier = (payload.get("supplier") or "").strip() or None
+    status = (payload.get("status") or "Draft").strip()
+    ordered_date = payload.get("ordered_date") or None
+    received_date = payload.get("received_date") or None
+
+    if status != "Draft" and not po_number:
+        raise HTTPException(status_code=400, detail="PO number is required unless the order is still in Draft.")
+
+    if status != "Draft" and not supplier:
+        raise HTTPException(status_code=400, detail="Supplier is required unless the order is still in Draft.")
+    if status in {"Ordered", "Received"} and not ordered_date:
+        raise HTTPException(status_code=400, detail="Ordered date is required once the purchase order is Ordered or Received.")
+    if status == "Received" and not received_date:
+        raise HTTPException(status_code=400, detail="Received date is required once the purchase order is Received.")
+    if ordered_date and received_date and received_date < ordered_date:
+        raise HTTPException(status_code=400, detail="Received date cannot be earlier than ordered date.")
+
+    if po_number:
+        existing = find_purchase_order_by_number(po_number)
+        if existing and existing[0] != po_id:
+            raise HTTPException(status_code=400, detail="A purchase order with this PO number already exists.")
+
+    update_purchase_order(
+        po_id=po_id,
+        po_number=po_number,
+        supplier=supplier,
+        status=status,
+        ordered_date=ordered_date,
+        received_date=received_date,
+    )
+
+    return {"ok": True}
+
+
+@app.delete("/api/purchase-orders/{po_id}")
+def delete_purchase_order_api(po_id: int):
+    delete_purchase_order(po_id)
+    return {"ok": True}
+
+
+@app.get("/api/purchase-orders/{po_id}/items")
+def get_purchase_order_items(po_id: int):
+    rows = list_purchase_order_items(po_id)
+
+    items = []
+    for row in rows:
+        items.append(
+            {
+                "material_id": row[0],
+                "name": row[1],
+                "type": row[2],
+                "color": row[3],
+                "unit": row[4],
+                "quantity_ordered": str(row[5]),
+                "unit_cost": str(row[6]),
+            }
+        )
+
+    return items
+
+
+@app.post("/api/purchase-orders/{po_id}/items")
+def upsert_purchase_order_item_api(po_id: int, payload: dict):
+    material_id = int(payload["material_id"])
+    quantity_ordered = payload.get("quantity_ordered", 0)
+    unit_cost = payload.get("unit_cost", 0)
+
+    try:
+        quantity_ordered = float(quantity_ordered)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Quantity ordered must be a number.")
+
+    if quantity_ordered <= 0:
+        raise HTTPException(status_code=400, detail="Quantity ordered must be greater than 0.")
+
+    try:
+        unit_cost = float(unit_cost)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Unit cost must be a number.")
+
+    if unit_cost < 0:
+        raise HTTPException(status_code=400, detail="Unit cost cannot be negative.")
+
+    upsert_purchase_order_item(
+        po_id=po_id,
+        material_id=material_id,
+        quantity_ordered=quantity_ordered,
+        unit_cost=unit_cost,
+    )
+
+    return {"ok": True}
+
+
+@app.delete("/api/purchase-orders/{po_id}/items/{material_id}")
+def delete_purchase_order_item_api(po_id: int, material_id: int):
+    delete_purchase_order_item(po_id, material_id)
     return {"ok": True}
