@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Pencil, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,44 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import StatusBadge from "@/components/shared/StatusBadge";
 
+function buildInitialMaterial(material) {
+  if (material) {
+    return {
+      ...material,
+      cost_per_unit: Number(material.cost_per_unit ?? material.unit_cost ?? 0),
+      quantity_on_hand: Number(material.quantity_on_hand ?? 0),
+      reorder_point:
+        typeof material.reorder_point === "number" ? material.reorder_point : null,
+      is_listed: material.is_listed ?? true,
+      category: material.category || "OTHER",
+      unit: material.unit || "pcs",
+      color: material.color || "N/A",
+      brand: material.brand || "",
+      type: material.type || "",
+      finish: material.finish || "",
+      supplier: material.supplier || "",
+    };
+  }
+
+  return {
+    name: "",
+    category: "OTHER",
+    type: "",
+    color: "N/A",
+    quantity_on_hand: 0,
+    cost_per_unit: 0,
+    unit: "pcs",
+    brand: "",
+    supplier: "",
+    finish: "",
+    reorder_point: null,
+    is_listed: true,
+  };
+}
+
 function ViewPanel({ material, onEdit }) {
-  const reorderPoint = typeof material.reorder_point === "number" ? material.reorder_point : null;
+  const reorderPoint =
+    typeof material.reorder_point === "number" ? material.reorder_point : null;
   const stockRatio =
     reorderPoint && reorderPoint > 0 ? material.quantity_on_hand / reorderPoint : null;
 
@@ -114,13 +150,15 @@ function ViewPanel({ material, onEdit }) {
   );
 }
 
-function EditPanel({ material, onSave, onCancel }) {
-  const [form, setForm] = useState({ ...material });
+function EditPanel({ material, mode, onSave, onCancel }) {
+  const [form, setForm] = useState(buildInitialMaterial(material));
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+
+  const heading = mode === "create" ? "Add Material" : "Edit Material";
 
   return (
     <div className="flex flex-col h-full">
-      <h2 className="text-base font-semibold text-foreground mb-6">Edit Material</h2>
+      <h2 className="text-base font-semibold text-foreground mb-6">{heading}</h2>
 
       <div className="flex-1 overflow-y-auto space-y-4 pr-1">
         <Field label="Name">
@@ -128,6 +166,13 @@ function EditPanel({ material, onSave, onCancel }) {
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
+          <Field label="Category">
+            <Input
+              value={form.category || ""}
+              onChange={(e) => set("category", e.target.value.toUpperCase())}
+              className="h-9 text-sm"
+            />
+          </Field>
           <Field label="Type">
             <Input
               value={form.type || ""}
@@ -135,10 +180,20 @@ function EditPanel({ material, onSave, onCancel }) {
               className="h-9 text-sm"
             />
           </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Color">
             <Input
               value={form.color || ""}
               onChange={(e) => set("color", e.target.value)}
+              className="h-9 text-sm"
+            />
+          </Field>
+          <Field label="Unit">
+            <Input
+              value={form.unit || ""}
+              onChange={(e) => set("unit", e.target.value)}
               className="h-9 text-sm"
             />
           </Field>
@@ -160,6 +215,14 @@ function EditPanel({ material, onSave, onCancel }) {
             />
           </Field>
         </div>
+
+        <Field label="Finish">
+          <Input
+            value={form.finish || ""}
+            onChange={(e) => set("finish", e.target.value)}
+            className="h-9 text-sm"
+          />
+        </Field>
 
         <div className="grid grid-cols-3 gap-3">
           <Field label="On Hand">
@@ -198,7 +261,8 @@ function EditPanel({ material, onSave, onCancel }) {
 
       <div className="pt-4 border-t border-border mt-4 flex gap-2">
         <Button size="sm" className="flex-1" onClick={() => onSave(form)}>
-          <Check className="mr-1.5 h-3.5 w-3.5" /> Save Changes
+          <Check className="mr-1.5 h-3.5 w-3.5" />
+          {mode === "create" ? "Create Material" : "Save Changes"}
         </Button>
         <Button size="sm" variant="outline" onClick={onCancel}>
           Cancel
@@ -237,9 +301,12 @@ function Field({ label, children }) {
 }
 
 export default function MaterialDrawer({ material, mode, onClose, onSave }) {
-  const [panel, setPanel] = useState(mode || "view");
+  const panel = useMemo(() => {
+    if (mode === "create") return "create";
+    return mode || "view";
+  }, [mode]);
 
-  if (!material) return null;
+  if (!material && panel !== "create") return null;
 
   return createPortal(
     <>
@@ -253,7 +320,7 @@ export default function MaterialDrawer({ material, mode, onClose, onSave }) {
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {panel === "view" ? "Material Details" : "Edit Material"}
+            {panel === "view" ? "Material Details" : panel === "create" ? "Add Material" : "Edit Material"}
           </span>
           <button
             onClick={onClose}
@@ -264,15 +331,16 @@ export default function MaterialDrawer({ material, mode, onClose, onSave }) {
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {panel === "view" ? (
-            <ViewPanel material={material} onEdit={() => setPanel("edit")} />
+            <ViewPanel material={material} onEdit={() => window.location.reload()} />
           ) : (
             <EditPanel
               material={material}
-              onSave={(updated) => {
-                onSave(updated);
+              mode={panel}
+              onSave={async (updated) => {
+                await onSave(updated);
                 onClose();
               }}
-              onCancel={() => setPanel("view")}
+              onCancel={onClose}
             />
           )}
         </div>

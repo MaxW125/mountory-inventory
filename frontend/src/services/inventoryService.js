@@ -30,6 +30,28 @@ export async function getMaterials() {
   return fetchJson('/api/materials');
 }
 
+export async function createMaterial(material) {
+  const payload = {
+    name: material.name || "",
+    category: (material.category || "OTHER").toUpperCase(),
+    color: material.color || "N/A",
+    quantity_on_hand: Number(material.quantity_on_hand || 0),
+    unit: material.unit || "pcs",
+    cost_per_unit: Number(material.cost_per_unit || 0),
+    brand: material.brand || "",
+    type: material.type || "",
+    finish: material.finish || "",
+  };
+
+  return fetchJson("/api/materials", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getMaterialCount() {
   const materials = await getMaterials();
   return materials.length;

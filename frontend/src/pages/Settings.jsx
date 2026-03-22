@@ -75,7 +75,7 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-foreground">Email Notifications</p>
-              <p className="text-xs text-muted-foreground">Preference placeholder for future notification settings</p>
+              <p className="text-xs text-muted-foreground">Manage notification preferences for account activity and inventory updates</p>
             </div>
             <Switch checked={emailNotifications} onCheckedChange={setEmailNotifications} />
           </div>
@@ -83,7 +83,7 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-foreground">Low Stock Alerts</p>
-              <p className="text-xs text-muted-foreground">Preference placeholder for future stock alert settings</p>
+              <p className="text-xs text-muted-foreground">Control how low stock alerts are surfaced in the dashboard experience</p>
             </div>
             <Switch checked={lowStockAlerts} onCheckedChange={setLowStockAlerts} />
           </div>

@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 import json
+from fastapi.middleware.cors import CORSMiddleware
 from server.repositories import (
     list_products,
     create_product,
@@ -18,6 +19,16 @@ from server.repositories import (
 
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Static files (JS/CSS)
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
