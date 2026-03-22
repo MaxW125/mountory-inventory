@@ -30,17 +30,38 @@ export async function getMaterials() {
   return fetchJson('/api/materials');
 }
 
+export async function getMaterialUnits() {
+  return fetchJson('/api/material-units');
+}
+
+export async function createMaterialUnit(name) {
+  return fetchJson('/api/material-units', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteMaterialUnit(unitId) {
+  return fetchJson(`/api/material-units/${unitId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function createMaterial(material) {
   const payload = {
     name: material.name || "",
-    category: (material.category || "OTHER").toUpperCase(),
     color: material.color || "N/A",
     quantity_on_hand: Number(material.quantity_on_hand || 0),
-    unit: material.unit || "pcs",
-    cost_per_unit: Number(material.cost_per_unit || 0),
+    cost_per_unit: Number(material.cost_per_unit || material.unit_cost || 0),
+    supplier: material.supplier || "",
+    reorder_point: Number(material.reorder_point || 0),
     brand: material.brand || "",
-    type: material.type || "",
     finish: material.finish || "",
+    type: material.type || "",
+    unit: material.unit || "",
   };
 
   return fetchJson("/api/materials", {
@@ -87,4 +108,33 @@ export async function getOpenOrderCount() {
 
 export async function getRecentActivity() {
   return [];
+}
+
+export async function deleteMaterial(materialId) {
+  return fetchJson(`/api/materials/${materialId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateMaterial(materialId, material) {
+  const payload = {
+    name: material.name || "",
+    color: material.color || "N/A",
+    quantity_on_hand: Number(material.quantity_on_hand || 0),
+    cost_per_unit: Number(material.cost_per_unit || material.unit_cost || 0),
+    supplier: material.supplier || "",
+    reorder_point: Number(material.reorder_point || 0),
+    brand: material.brand || "",
+    finish: material.finish || "",
+    type: material.type || "",
+    unit: material.unit || "",
+  };
+
+  return fetchJson(`/api/materials/${materialId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 }

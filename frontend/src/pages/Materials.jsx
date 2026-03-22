@@ -13,23 +13,35 @@ import SearchInput from "@/components/shared/SearchInput";
 import DataTable from "@/components/shared/DataTable";
 import MaterialDrawer from "@/components/materials/MaterialDrawer";
 import AddMaterialModal from "@/components/materials/AddMaterialModal";
-import { getMaterials, createMaterial } from "@/services/inventoryService";
+import {
+  getMaterials,
+  createMaterial,
+  updateMaterial,
+  deleteMaterial,
+  getMaterialUnits,
+  createMaterialUnit,
+  deleteMaterialUnit,
+} from "@/services/inventoryService";
 
 function normalizeMaterial(material) {
   return {
     ...material,
-    type: material.type || (material.category === "FILAMENT" ? "Filament" : material.category || "Other"),
+    type: material.type || "—",
+    color: material.color || "N/A",
     supplier: material.supplier || "—",
     reorder_point: typeof material.reorder_point === "number" ? material.reorder_point : 0,
-    is_listed: material.is_listed ?? true,
     quantity_on_hand: Number(material.quantity_on_hand ?? 0),
     cost_per_unit: Number(material.cost_per_unit ?? material.unit_cost ?? 0),
     unit_cost: Number(material.cost_per_unit ?? material.unit_cost ?? 0),
+    unit: material.unit || "—",
+    brand: material.brand || "—",
+    finish: material.finish || "—",
   };
 }
 
 export default function Materials() {
   const [materials, setMaterials] = useState([]);
+  const [units, setUnits] = useState([]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
@@ -39,7 +51,17 @@ export default function Materials() {
   const [drawer, setDrawer] = useState(null); // { material, mode }
 
   useEffect(() => {
-    getMaterials().then((items) => setMaterials((items || []).map(normalizeMaterial)));
+    async function loadData() {
+      const [materialItems, unitItems] = await Promise.all([
+        getMaterials(),
+        getMaterialUnits(),
+      ]);
+
+      setMaterials((materialItems || []).map(normalizeMaterial));
+      setUnits(unitItems || []);
+    }
+
+    loadData();
   }, []);
 
   const types = useMemo(
@@ -67,17 +89,45 @@ export default function Materials() {
     setMaterials((prev) => [...prev, newMaterial]);
   }
 
-  function handleSave(updated) {
-    setMaterials((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  async function handleSave(updated) {
+    await updateMaterial(updated.id, updated);
+    const refreshed = await getMaterials();
+    setMaterials((refreshed || []).map(normalizeMaterial));
   }
 
-  function handleDelete(id) {
-    setMaterials((prev) => prev.filter((m) => m.id !== id));
+  async function handleDelete(id) {
+    const material = materials.find((m) => m.id === id);
+    const confirmed = window.confirm(
+      `Delete material${material?.name ? ` "${material.name}"` : ""}?`
+    );
+
+    if (!confirmed) return;
+
+    await deleteMaterial(id);
+    const refreshed = await getMaterials();
+    setMaterials((refreshed || []).map(normalizeMaterial));
+  }
+
+  async function refreshUnits() {
+    const refreshedUnits = await getMaterialUnits();
+    setUnits(refreshedUnits || []);
+  }
+
+  async function handleCreateUnit(name) {
+    await createMaterialUnit(name);
+    await refreshUnits();
+  }
+
+  async function handleDeleteUnit(unitId) {
+    await deleteMaterialUnit(unitId);
+    await refreshUnits();
   }
 
   const columns = [
     { key: "name", label: "Material Name" },
     { key: "type", label: "Type" },
+    { key: "brand", label: "Brand" },
+    { key: "finish", label: "Finish" },
     { key: "color", label: "Color" },
     {
       key: "quantity_on_hand",
@@ -86,17 +136,18 @@ export default function Materials() {
         const isLow = row.quantity_on_hand <= row.reorder_point;
         return (
           <span className={isLow ? "font-medium text-destructive" : ""}>
-            {row.quantity_on_hand} {row.unit}
+            {row.quantity_on_hand}
           </span>
         );
       },
     },
+    { key: "unit", label: "Unit" },
     { key: "unit_cost", label: "Unit Cost", render: (row) => `$${row.unit_cost.toFixed(2)}` },
     { key: "supplier", label: "Supplier" },
     {
       key: "reorder_point",
       label: "Reorder Pt",
-      render: (row) => `${row.reorder_point} ${row.unit}`,
+      render: (row) => `${row.reorder_point}`,
     },
     {
       key: "actions",
@@ -157,6 +208,9 @@ export default function Materials() {
 
       {showAddModal && (
         <AddMaterialModal
+          units={units}
+          onCreateUnit={handleCreateUnit}
+          onDeleteUnit={handleDeleteUnit}
           onClose={() => setShowAddModal(false)}
           onCreate={async (payload) => {
             await createMaterial(payload);
@@ -170,8 +224,12 @@ export default function Materials() {
         <MaterialDrawer
           material={drawer.material}
           mode={drawer.mode}
+          units={units}
+          onCreateUnit={handleCreateUnit}
+          onDeleteUnit={handleDeleteUnit}
           onClose={() => setDrawer(null)}
           onSave={handleSave}
+          onEdit={() => setDrawer((current) => ({ ...current, mode: "edit" }))}
         />
       )}
     </div>
