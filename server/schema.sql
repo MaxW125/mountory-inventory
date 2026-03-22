@@ -8,7 +8,7 @@ CREATE TABLE products (
   sku TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   price NUMERIC(10,2) NOT NULL,
-  materials_input TEXT
+  materials_input TEXT,
   is_listed BOOLEAN NOT NULL DEFAULT TRUE
 );
 
@@ -18,6 +18,7 @@ CREATE TABLE materials (
   category TEXT NOT NULL,          -- FILAMENT | HARDWARE | PACKAGING | OTHER
   color TEXT NOT NULL,             -- allow 'N/A'
   quantity_on_hand NUMERIC(12,2) NOT NULL DEFAULT 0,
+  cost_per_unit NUMERIC(12,4) NOT NULL DEFAULT 0,
   unit TEXT NOT NULL DEFAULT 'pcs',
 
   -- Filament-only fields (nullable for non-filament)
