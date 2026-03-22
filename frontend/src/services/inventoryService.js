@@ -3,16 +3,116 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 async function fetchJson(url, options = {}) {
   const response = await fetch(`${API_BASE}${url}`, options);
 
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
   }
 
-  return response.json();
+  if (!response.ok) {
+    const error = new Error(
+      typeof data?.detail === "string"
+        ? data.detail
+        : data?.detail?.message || `Request failed: ${response.status}`
+    );
+    error.status = response.status;
+    error.detail = data?.detail;
+    throw error;
+  }
+
+  return data;
 }
 
 // Products
 export async function getProducts() {
   return fetchJson('/api/products');
+}
+
+export async function createProduct(product) {
+  const payload = {
+    sku: product.sku?.trim() || "",
+    name: product.name?.trim() || "",
+    department: product.department?.trim() || "",
+    sell_price: Number(product.sell_price || 0),
+    is_listed: !!product.is_listed,
+  };
+
+  return fetchJson('/api/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+
+export async function updateProduct(productId, product) {
+  const payload = {
+    sku: product.sku?.trim() || "",
+    name: product.name?.trim() || "",
+    department: product.department?.trim() || "",
+    sell_price: Number(product.sell_price || 0),
+    is_listed: !!product.is_listed,
+  };
+
+  return fetchJson(`/api/products/${productId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProduct(productId) {
+  return fetchJson(`/api/products/${productId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getProductMaterials(productId) {
+  return fetchJson(`/api/products/${productId}/materials`);
+}
+
+export async function saveProductMaterial(productId, materialId, qtyPerUnit) {
+  return fetchJson(`/api/products/${productId}/materials`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      material_id: materialId,
+      qty_per_unit: Number(qtyPerUnit || 0),
+    }),
+  });
+}
+
+export async function removeProductMaterial(productId, materialId) {
+  return fetchJson(`/api/products/${productId}/materials/${materialId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getProductDepartments() {
+  return fetchJson('/api/product-departments');
+}
+
+export async function createProductDepartment(name) {
+  return fetchJson('/api/product-departments', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteProductDepartment(departmentId) {
+  return fetchJson(`/api/product-departments/${departmentId}`, {
+    method: 'DELETE',
+  });
 }
 
 export async function getProductCount() {

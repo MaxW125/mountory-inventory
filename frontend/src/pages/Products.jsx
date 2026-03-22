@@ -14,7 +14,19 @@ import DataTable from "@/components/shared/DataTable";
 import StatusBadge from "@/components/shared/StatusBadge";
 import ProductDrawer from "@/components/products/ProductDrawer";
 import AddProductModal from "@/components/products/AddProductModal";
-import { getProducts } from "@/services/inventoryService";
+import {
+  getProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getProductMaterials,
+  getMaterials,
+  saveProductMaterial,
+  removeProductMaterial,
+  getProductDepartments,
+  createProductDepartment,
+  deleteProductDepartment,
+} from "@/services/inventoryService";
 
 
 const SORT_OPTIONS = [
@@ -22,28 +34,51 @@ const SORT_OPTIONS = [
   { value: "name_desc", label: "Name Z→A" },
   { value: "price_asc", label: "Price Low→High" },
   { value: "price_desc", label: "Price High→Low" },
-  { value: "listed_first", label: "Listed First" },
-  { value: "unlisted_first", label: "Unlisted First" },
 ];
+
+function normalizeProduct(product) {
+  return {
+    ...product,
+    department: product.department || "—",
+    unit_cost: Number(product.unit_cost ?? 0),
+    sell_price: Number(product.sell_price ?? 0),
+  };
+}
 
 export default function Products() {
   const [products, setProducts] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [departmentOptions, setDepartmentOptions] = useState([]);
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [sort, setSort] = useState("name_asc");
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Drawer state
   const [drawer, setDrawer] = useState(null); // { product, mode: 'view' | 'edit' }
 
   useEffect(() => {
-    getProducts().then(setProducts);
+    async function loadData() {
+      const [productItems, materialItems, departmentItems] = await Promise.all([
+        getProducts(),
+        getMaterials(),
+        getProductDepartments(),
+      ]);
+
+      setProducts((productItems || []).map(normalizeProduct));
+      setMaterials(materialItems || []);
+      setDepartmentOptions(departmentItems || []);
+    }
+
+    loadData();
   }, []);
 
   const departments = useMemo(
-    () => [...new Set(products.map((p) => p.department))].sort(),
-    [products]
+    () => (departmentOptions || []).map((d) => d.name).sort(),
+    [departmentOptions]
   );
 
   const filtered = useMemo(() => {
@@ -54,31 +89,125 @@ export default function Products() {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
-          p.upc.includes(q)
+          p.department.toLowerCase().includes(q)
       );
     }
     if (department !== "all") result = result.filter((p) => p.department === department);
+    if (statusFilter === "listed") result = result.filter((p) => p.is_listed);
+    if (statusFilter === "unlisted") result = result.filter((p) => !p.is_listed);
     switch (sort) {
       case "name_asc":    result.sort((a, b) => a.name.localeCompare(b.name)); break;
       case "name_desc":   result.sort((a, b) => b.name.localeCompare(a.name)); break;
-      case "price_asc":   result.sort((a, b) => a.price - b.price); break;
-      case "price_desc":  result.sort((a, b) => b.price - a.price); break;
-      case "listed_first":    result.sort((a, b) => Number(b.is_listed) - Number(a.is_listed)); break;
-      case "unlisted_first":  result.sort((a, b) => Number(a.is_listed) - Number(b.is_listed)); break;
+      case "price_asc":   result.sort((a, b) => a.sell_price - b.sell_price); break;
+      case "price_desc":  result.sort((a, b) => b.sell_price - a.sell_price); break;
     }
     return result;
-  }, [products, search, department, sort]);
+  }, [products, search, department, statusFilter, sort]);
 
-  function handleAdd(newProduct) {
-    setProducts((prev) => [...prev, newProduct]);
+  async function handleAdd(newProduct) {
+    const created = await createProduct(newProduct);
+    const productId = created?.id;
+
+    if (productId && Array.isArray(newProduct.materials_used) && newProduct.materials_used.length > 0) {
+      await Promise.all(
+        newProduct.materials_used.map((item) =>
+          saveProductMaterial(productId, item.material_id, item.qty_per_unit)
+        )
+      );
+    }
+
+    const refreshed = await getProducts();
+    setProducts((refreshed || []).map(normalizeProduct));
   }
 
-  function handleSave(updated) {
-    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  async function handleSave(updated) {
+    await updateProduct(updated.id, updated);
+    const refreshed = await getProducts();
+    setProducts((refreshed || []).map(normalizeProduct));
+  }
+
+  async function refreshProducts() {
+    const refreshed = await getProducts();
+    setProducts((refreshed || []).map(normalizeProduct));
+    return refreshed || [];
+  }
+
+  async function refreshDepartments() {
+    const refreshed = await getProductDepartments();
+    setDepartmentOptions(refreshed || []);
+    return refreshed || [];
+  }
+
+  async function handleCreateDepartment(name) {
+    await createProductDepartment(name);
+    await refreshDepartments();
+  }
+
+  async function handleDeleteDepartment(departmentId) {
+    await deleteProductDepartment(departmentId);
+    await refreshDepartments();
+  }
+
+  async function handleSaveBomLine(productId, materialId, qtyPerUnit) {
+    await saveProductMaterial(productId, materialId, qtyPerUnit);
+
+    const [refreshedProducts, refreshedBom] = await Promise.all([
+      refreshProducts(),
+      getProductMaterials(productId),
+    ]);
+
+    const refreshedProduct = (refreshedProducts || [])
+      .map(normalizeProduct)
+      .find((p) => p.id === productId);
+
+    if (refreshedProduct) {
+      setDrawer((current) =>
+        current
+          ? { ...current, product: refreshedProduct, bom: refreshedBom || [] }
+          : current
+      );
+    }
+  }
+
+  async function handleRemoveBomLine(productId, materialId) {
+    await removeProductMaterial(productId, materialId);
+
+    const [refreshedProducts, refreshedBom] = await Promise.all([
+      refreshProducts(),
+      getProductMaterials(productId),
+    ]);
+
+    const refreshedProduct = (refreshedProducts || [])
+      .map(normalizeProduct)
+      .find((p) => p.id === productId);
+
+    if (refreshedProduct) {
+      setDrawer((current) =>
+        current
+          ? { ...current, product: refreshedProduct, bom: refreshedBom || [] }
+          : current
+      );
+    }
+  }
+
+  async function openDrawer(product, mode) {
+    const bom = await getProductMaterials(product.id);
+    setDrawer({ product, mode, bom: bom || [] });
   }
 
   function handleDelete(id) {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    const product = products.find((p) => p.id === id);
+    if (!product) return;
+    setDeleteTarget(product);
+  }
+
+  async function confirmDeleteProduct() {
+    if (!deleteTarget) return;
+
+    await deleteProduct(deleteTarget.id);
+    const refreshed = await getProducts();
+    setProducts((refreshed || []).map(normalizeProduct));
+    setDeleteTarget(null);
   }
 
   const columns = [
@@ -86,7 +215,7 @@ export default function Products() {
     { key: "name", label: "Item Name" },
     { key: "department", label: "Department" },
     { key: "unit_cost", label: "Unit Cost", render: (row) => `$${row.unit_cost.toFixed(2)}` },
-    { key: "price", label: "Sell Price", render: (row) => `$${row.price.toFixed(2)}` },
+    { key: "sell_price", label: "Sell Price", render: (row) => `$${row.sell_price.toFixed(2)}` },
     {
       key: "is_listed",
       label: "Status",
@@ -106,12 +235,12 @@ export default function Products() {
           <ActionBtn
             icon={Eye}
             title="View details"
-            onClick={() => setDrawer({ product: row, mode: "view" })}
+            onClick={() => openDrawer(row, "view")}
           />
           <ActionBtn
             icon={Pencil}
             title="Edit product"
-            onClick={() => setDrawer({ product: row, mode: "edit" })}
+            onClick={() => openDrawer(row, "edit")}
           />
           <ActionBtn
             icon={Trash2}
@@ -133,7 +262,7 @@ export default function Products() {
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by name, SKU, or UPC..." />
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by name, SKU, or department..." />
         <Select value={department} onValueChange={setDepartment}>
           <SelectTrigger className="w-48 h-9 text-sm">
             <SelectValue placeholder="All Departments" />
@@ -143,6 +272,16 @@ export default function Products() {
             {departments.map((d) => (
               <SelectItem key={d} value={d}>{d}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-44 h-9 text-sm">
+            <SelectValue placeholder="Any Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Any Status</SelectItem>
+            <SelectItem value="listed">Listed</SelectItem>
+            <SelectItem value="unlisted">Unlisted</SelectItem>
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={setSort}>
@@ -155,8 +294,8 @@ export default function Products() {
             ))}
           </SelectContent>
         </Select>
-        {(search || department !== "all" || sort !== "name_asc") && (
-          <Button size="sm" variant="outline" onClick={() => { setSearch(""); setDepartment("all"); setSort("name_asc"); }}>
+        {(search || department !== "all" || statusFilter !== "all" || sort !== "name_asc") && (
+          <Button size="sm" variant="outline" onClick={() => { setSearch(""); setDepartment("all"); setStatusFilter("all"); setSort("name_asc"); }}>
             <X className="mr-1.5 h-3.5 w-3.5" /> Reset Filters
           </Button>
         )}
@@ -165,17 +304,62 @@ export default function Products() {
       <DataTable columns={columns} data={filtered} />
 
       {showAddModal && (
-        <AddProductModal onClose={() => setShowAddModal(false)} onAdd={handleAdd} />
+        <AddProductModal
+          departments={departmentOptions}
+          materials={materials}
+          onCreateDepartment={handleCreateDepartment}
+          onDeleteDepartment={handleDeleteDepartment}
+          onClose={() => setShowAddModal(false)}
+          onAdd={handleAdd}
+        />
       )}
 
       {drawer && (
         <ProductDrawer
           product={drawer.product}
-          bom={drawer.product.materials_input || []}
+          bom={drawer.bom || []}
+          materials={materials}
+          departments={departmentOptions}
           mode={drawer.mode}
           onClose={() => setDrawer(null)}
           onSave={handleSave}
+          onSaveBomLine={handleSaveBomLine}
+          onRemoveBomLine={handleRemoveBomLine}
+          onCreateDepartment={handleCreateDepartment}
+          onDeleteDepartment={handleDeleteDepartment}
         />
+      )}
+      {deleteTarget && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.5)" }}
+            onClick={() => setDeleteTarget(null)}
+          />
+          <div
+            style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 50, width: "26rem", maxWidth: "calc(100vw - 2rem)" }}
+            className="bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-foreground">Delete Product</h2>
+            </div>
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-sm text-foreground">
+                Are you sure you want to delete <span className="font-medium">{deleteTarget.name}</span>?
+              </p>
+              <p className="text-sm text-muted-foreground">
+                This will also remove any linked materials for this product.
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-border flex gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button size="sm" variant="destructive" onClick={confirmDeleteProduct}>
+                Delete Product
+              </Button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

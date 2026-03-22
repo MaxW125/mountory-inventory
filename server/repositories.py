@@ -401,10 +401,10 @@ def list_products():
             p.id,
             p.sku,
             p.name,
-            p.price,
+            p.department,
+            p.sell_price,
             p.is_listed,
-            COALESCE(SUM(pm.qty_per_unit * m.cost_per_unit), 0) AS unit_cost,
-            p.materials_input
+            COALESCE(SUM(pm.qty_per_unit * m.cost_per_unit), 0) AS unit_cost
         FROM products p
         LEFT JOIN product_materials pm ON pm.product_id = p.id
         LEFT JOIN materials m ON m.id = pm.material_id
@@ -412,9 +412,9 @@ def list_products():
             p.id,
             p.sku,
             p.name,
-            p.price,
-            p.is_listed,
-            p.materials_input
+            p.department,
+            p.sell_price,
+            p.is_listed
         ORDER BY p.id;
     """
 
@@ -426,31 +426,15 @@ def list_products():
     return rows
 
 
-def create_product(sku, name, price, materials_used=None, is_listed=True):
-    """Create a product.
-
-    - Inserts a product row (sku, name, price, is_listed)
-    - If materials_used is provided (list of dicts), the function will:
-        1) ensure each material exists (auto-add into materials table)
-        2) store the original list into products.materials_input (JSON text)
-
-    Returns: product_id
-    """
-    materials_used = materials_used or []
-
-    # Auto-add materials first (so product create fails early if invalid material entries)
-    for m in materials_used:
-        find_or_create_material(m)
-
-    materials_input = json.dumps(materials_used)
-
+def create_product(sku, name, department, sell_price, is_listed=True):
+    """Create a product row and return its id."""
     sql = """
         INSERT INTO products (
             sku,
             name,
-            price,
-            is_listed,
-            materials_input
+            department,
+            sell_price,
+            is_listed
         )
         VALUES (%s, %s, %s, %s, %s)
         RETURNING id;
@@ -458,7 +442,7 @@ def create_product(sku, name, price, materials_used=None, is_listed=True):
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (sku, name, price, is_listed, materials_input))
+            cur.execute(sql, (sku, name, department, sell_price, is_listed))
             product_id = cur.fetchone()[0]
             conn.commit()
 
@@ -479,6 +463,184 @@ def set_product_listed(product_id: int, is_listed: bool):
             conn.commit()
 
 
+def update_product(product_id: int, sku, name, department, sell_price, is_listed):
+    """Update core product fields."""
+    sql = """
+        UPDATE products
+        SET
+            sku = %s,
+            name = %s,
+            department = %s,
+            sell_price = %s,
+            is_listed = %s
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (sku, name, department, sell_price, is_listed, product_id))
+            conn.commit()
+
+
+# -----------------------------
+# Delete Product and its BOM
+# -----------------------------
+
+def delete_product(product_id: int):
+    """Delete a product row and any BOM rows linked to it."""
+    delete_bom_sql = """
+        DELETE FROM product_materials
+        WHERE product_id = %s;
+    """
+
+    delete_product_sql = """
+        DELETE FROM products
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(delete_bom_sql, (product_id,))
+            cur.execute(delete_product_sql, (product_id,))
+            conn.commit()
+
+
+# -----------------------------
+# Product Departments
+# -----------------------------
+
+def list_product_departments():
+    """Return all allowed product departments."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM product_departments
+        ORDER BY LOWER(name), id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    return rows
+
+
+def get_product_department_by_id(department_id: int):
+    """Return one product department row by id, or None."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM product_departments
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (department_id,))
+            row = cur.fetchone()
+
+    return row
+
+
+def find_product_department_by_name(name: str):
+    """Return one product department row by name (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM product_departments
+        WHERE LOWER(name) = LOWER(%s)
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name,))
+            row = cur.fetchone()
+
+    return row
+
+
+def create_product_department(name: str):
+    """Create a product department if it does not already exist. Returns the department id."""
+    normalized_name = " ".join((name or "").strip().split())
+    normalized_name = normalized_name.title()
+    if not normalized_name:
+        raise ValueError("Department name is required")
+
+    existing = find_product_department_by_name(normalized_name)
+    if existing:
+        return existing[0]
+
+    sql = """
+        INSERT INTO product_departments (name)
+        VALUES (%s)
+        RETURNING id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (normalized_name,))
+            department_id = cur.fetchone()[0]
+            conn.commit()
+
+    return department_id
+
+
+def count_products_using_department(name: str):
+    """Return how many products currently use a department name."""
+    sql = """
+        SELECT COUNT(*)
+        FROM products
+        WHERE LOWER(department) = LOWER(%s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name,))
+            count = cur.fetchone()[0]
+
+    return count
+
+
+def delete_product_department(department_id: int):
+    """Delete one product department row by id."""
+    sql = """
+        DELETE FROM product_departments
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (department_id,))
+            conn.commit()
+
+
+def find_product_by_sku(sku: str):
+    """Return one product row by SKU (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            sku,
+            name,
+            department,
+            sell_price,
+            is_listed
+        FROM products
+        WHERE LOWER(TRIM(sku)) = LOWER(TRIM(%s))
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (sku,))
+            row = cur.fetchone()
+
+    return row
+
 # -----------------------------
 # Product BOM (recipe)
 # -----------------------------
@@ -491,6 +653,7 @@ def list_product_materials(product_id: int):
             m.type,
             m.name,
             m.color,
+            m.unit,
             pm.qty_per_unit
         FROM product_materials pm
         JOIN materials m ON m.id = pm.material_id

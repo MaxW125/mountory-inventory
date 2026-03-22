@@ -40,13 +40,41 @@ export default function AddMaterialModal({
   const [addingUnit, setAddingUnit] = useState(false);
   const [managingUnits, setManagingUnits] = useState(false);
   const [newUnit, setNewUnit] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
+  function getErrorMessage(error, fallbackMessage) {
+    const detail = error?.response?.data?.detail ?? error?.detail;
+
+    if (typeof detail === "string" && detail.trim()) {
+      return detail;
+    }
+
+    if (detail && typeof detail === "object" && typeof detail.message === "string") {
+      return detail.message;
+    }
+
+    if (error instanceof Error && error.message?.trim()) {
+      return error.message;
+    }
+
+    return fallbackMessage;
+  }
+
   async function removeUnit(unit) {
     if (!unit?.id) return;
-    await onDeleteUnit(unit.id);
-    if (form.unit === unit.name) set("unit", "");
+
+    try {
+      setErrorMessage("");
+      await onDeleteUnit(unit.id);
+      if (form.unit === unit.name) set("unit", "");
+    } catch (error) {
+      setErrorMessage(
+        getErrorMessage(error, "Could not delete that unit right now.")
+      );
+    }
   }
 
   async function confirmNewUnit() {
@@ -57,42 +85,85 @@ export default function AddMaterialModal({
       (u) => u.name.toLowerCase() === trimmed.toLowerCase()
     );
 
-    if (!exists) {
-      await onCreateUnit(trimmed);
-      set("unit", trimmed);
+    if (exists) {
+      setErrorMessage("That unit already exists.");
+      return;
     }
 
-    setNewUnit("");
-    setAddingUnit(false);
+    try {
+      setErrorMessage("");
+      await onCreateUnit(trimmed);
+      set("unit", trimmed);
+      setNewUnit("");
+      setAddingUnit(false);
+    } catch (error) {
+      setErrorMessage(
+        getErrorMessage(error, "Could not add that unit right now.")
+      );
+    }
   }
 
   async function handleSubmit() {
-    if (!form.name.trim()) return;
+    const trimmedName = form.name.trim();
+    const quantityOnHand = parseFloat(form.quantity_on_hand || "0");
+    const unitCost = parseFloat(form.unit_cost || "0");
+    const reorderPoint = parseFloat(form.reorder_point || "0");
+
+    if (!trimmedName) {
+      setErrorMessage("Material name is required.");
+      return;
+    }
+
+    if (Number.isNaN(quantityOnHand) || quantityOnHand < 0) {
+      setErrorMessage("On hand quantity cannot be negative.");
+      return;
+    }
+
+    if (Number.isNaN(unitCost) || unitCost < 0) {
+      setErrorMessage("Unit cost cannot be negative.");
+      return;
+    }
+
+    if (Number.isNaN(reorderPoint) || reorderPoint < 0) {
+      setErrorMessage("Reorder point cannot be negative.");
+      return;
+    }
 
     const payload = {
-      name: form.name.trim(),
+      name: trimmedName,
       color: form.color?.trim() || "N/A",
-      quantity_on_hand: parseFloat(form.quantity_on_hand) || 0,
+      quantity_on_hand: quantityOnHand,
       unit: form.unit?.trim() || "",
-      cost_per_unit: parseFloat(form.unit_cost) || 0,
+      cost_per_unit: unitCost,
       brand: form.brand?.trim() || "",
       type: form.type?.trim() || "",
       finish: form.finish?.trim() || "",
       supplier: form.supplier?.trim() || "",
-      reorder_point: parseFloat(form.reorder_point) || 0,
+      reorder_point: reorderPoint,
     };
 
-    if (onCreate) {
-      await onCreate(payload);
-    } else if (onAdd) {
-      onAdd({
-        ...payload,
-        id: Date.now(),
-        unit_cost: payload.cost_per_unit,
-      });
-    }
+    try {
+      setErrorMessage("");
+      setIsSubmitting(true);
 
-    onClose();
+      if (onCreate) {
+        await onCreate(payload);
+      } else if (onAdd) {
+        onAdd({
+          ...payload,
+          id: Date.now(),
+          unit_cost: payload.cost_per_unit,
+        });
+      }
+
+      onClose();
+    } catch (error) {
+      setErrorMessage(
+        getErrorMessage(error, "Could not add material right now.")
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return createPortal(
@@ -124,6 +195,11 @@ export default function AddMaterialModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+          {errorMessage && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {errorMessage}
+            </div>
+          )}
           <Field label="Material Name *">
             <Input
               value={form.name}
@@ -314,8 +390,14 @@ export default function AddMaterialModal({
         </div>
 
         <div className="px-5 py-4 border-t border-border flex gap-2">
-          <Button size="sm" className="flex-1" onClick={handleSubmit} disabled={!form.name.trim()}>
-            <Check className="mr-1.5 h-3.5 w-3.5" /> Add Material
+          <Button
+            size="sm"
+            className="flex-1"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+          >
+            <Check className="mr-1.5 h-3.5 w-3.5" />
+            {isSubmitting ? "Adding..." : "Add Material"}
           </Button>
           <Button size="sm" variant="outline" onClick={onClose}>
             Cancel

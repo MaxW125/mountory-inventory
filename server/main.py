@@ -8,6 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from server.repositories import (
     list_products,
     create_product,
+    update_product,
+    delete_product,
+    find_product_by_sku,
+    list_product_departments,
+    create_product_department,
+    get_product_department_by_id,
+    count_products_using_department,
+    delete_product_department,
     set_product_listed,
     list_materials,
     create_material,
@@ -119,26 +127,15 @@ def get_products():
 
     products = []
     for row in rows:
-        is_listed = row[4]
-        unit_cost = row[5]
-        materials_input_raw = row[6]
-        materials_input = None
-
-        if materials_input_raw:
-            try:
-                materials_input = json.loads(materials_input_raw)
-            except Exception:
-                materials_input = materials_input_raw
-
         products.append(
             {
                 "id": row[0],
                 "sku": row[1],
                 "name": row[2],
-                "price": str(row[3]),
-                "unit_cost": str(unit_cost),
-                "is_listed": bool(is_listed),
-                "materials_input": materials_input,
+                "department": row[3],
+                "sell_price": str(row[4]),
+                "is_listed": bool(row[5]),
+                "unit_cost": str(row[6]),
             }
         )
 
@@ -147,18 +144,42 @@ def get_products():
 
 @app.post("/api/products")
 def create_product_api(payload: dict):
-    sku = payload["sku"]
-    name = payload["name"]
-    price = payload["price"]
+    sku = (payload.get("sku") or "").strip()
+    name = (payload.get("name") or "").strip()
+    department = (payload.get("department") or "").strip()
+    sell_price = payload.get("sell_price", 0)
     is_listed = payload.get("is_listed", True)
-    materials_used = payload.get("materials_used") or []
+
+    if not sku:
+        raise HTTPException(status_code=400, detail="Product SKU is required.")
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Product name is required.")
+
+    if not department:
+        raise HTTPException(status_code=400, detail="Product department is required.")
+
+    try:
+        sell_price = float(sell_price)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Sell price must be a number.")
+
+    if sell_price < 0:
+        raise HTTPException(status_code=400, detail="Sell price cannot be negative.")
+
+    existing = find_product_by_sku(sku)
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="A product with this SKU already exists.",
+        )
 
     product_id = create_product(
         sku=sku,
         name=name,
-        price=price,
+        department=department,
+        sell_price=sell_price,
         is_listed=is_listed,
-        materials_used=materials_used,
     )
 
     return {"id": product_id}
@@ -168,6 +189,55 @@ def create_product_api(payload: dict):
 def update_product_listed(product_id: int, payload: dict):
     is_listed = bool(payload["is_listed"])
     set_product_listed(product_id, is_listed)
+    return {"ok": True}
+
+
+# Patch endpoint for updating product info
+@app.patch("/api/products/{product_id}")
+def update_product_api(product_id: int, payload: dict):
+    sku = (payload.get("sku") or "").strip()
+    name = (payload.get("name") or "").strip()
+    department = (payload.get("department") or "").strip()
+    sell_price = payload.get("sell_price", 0)
+    is_listed = payload.get("is_listed", True)
+
+    if not sku:
+        raise HTTPException(status_code=400, detail="Product SKU is required.")
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Product name is required.")
+
+    if not department:
+        raise HTTPException(status_code=400, detail="Product department is required.")
+
+    try:
+        sell_price = float(sell_price)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Sell price must be a number.")
+
+    if sell_price < 0:
+        raise HTTPException(status_code=400, detail="Sell price cannot be negative.")
+
+    existing = find_product_by_sku(sku)
+    if existing and existing[0] != product_id:
+        raise HTTPException(
+            status_code=400,
+            detail="A product with this SKU already exists.",
+        )
+
+    update_product(
+        product_id=product_id,
+        sku=sku,
+        name=name,
+        department=department,
+        sell_price=sell_price,
+        is_listed=is_listed,
+    )
+    return {"ok": True}
+
+@app.delete("/api/products/{product_id}")
+def delete_product_api(product_id: int):
+    delete_product(product_id)
     return {"ok": True}
 
 
@@ -294,6 +364,56 @@ def delete_material_unit_api(unit_id: int):
     return {"ok": True}
 
 
+# Product Departments Endpoints
+@app.get("/api/product-departments")
+def get_product_departments():
+    rows = list_product_departments()
+
+    departments = []
+    for row in rows:
+        departments.append(
+            {
+                "id": row[0],
+                "name": row[1],
+            }
+        )
+
+    return departments
+
+
+@app.post("/api/product-departments")
+def create_product_department_api(payload: dict):
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Department name is required.")
+
+    department_id = create_product_department(name)
+    department_row = get_product_department_by_id(department_id)
+
+    return {
+        "id": department_row[0],
+        "name": department_row[1],
+    }
+
+
+@app.delete("/api/product-departments/{department_id}")
+def delete_product_department_api(department_id: int):
+    department_row = get_product_department_by_id(department_id)
+    if not department_row:
+        raise HTTPException(status_code=404, detail="Department not found.")
+
+    department_name = department_row[1]
+    usage_count = count_products_using_department(department_name)
+    if usage_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete a department that is currently in use.",
+        )
+
+    delete_product_department(department_id)
+    return {"ok": True}
+
+
 @app.get("/api/products/{product_id}/materials")
 def get_product_bom(product_id: int):
     rows = list_product_materials(product_id)
@@ -305,7 +425,8 @@ def get_product_bom(product_id: int):
             "type": row[1],
             "name": row[2],
             "color": row[3],
-            "qty_per_unit": str(row[4]),
+            "unit": row[4],
+            "qty_per_unit": str(row[5]),
         })
 
     return bom
@@ -315,6 +436,14 @@ def get_product_bom(product_id: int):
 def upsert_product_bom_line(product_id: int, payload: dict):
     material_id = int(payload["material_id"])
     qty_per_unit = payload.get("qty_per_unit", 0)
+
+    try:
+        qty_per_unit = float(qty_per_unit)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Qty per unit must be a number.")
+
+    if qty_per_unit <= 0:
+        raise HTTPException(status_code=400, detail="Qty per unit must be greater than 0.")
 
     upsert_product_material(product_id, material_id, qty_per_unit)
     return {"ok": True}

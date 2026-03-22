@@ -46,6 +46,7 @@ export default function Materials() {
   const [typeFilter, setTypeFilter] = useState("all");
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Drawer state
   const [drawer, setDrawer] = useState(null); // { material, mode }
@@ -95,17 +96,19 @@ export default function Materials() {
     setMaterials((refreshed || []).map(normalizeMaterial));
   }
 
-  async function handleDelete(id) {
+  function handleDelete(id) {
     const material = materials.find((m) => m.id === id);
-    const confirmed = window.confirm(
-      `Delete material${material?.name ? ` "${material.name}"` : ""}?`
-    );
+    if (!material) return;
+    setDeleteTarget(material);
+  }
 
-    if (!confirmed) return;
+  async function confirmDeleteMaterial() {
+    if (!deleteTarget) return;
 
-    await deleteMaterial(id);
+    await deleteMaterial(deleteTarget.id);
     const refreshed = await getMaterials();
     setMaterials((refreshed || []).map(normalizeMaterial));
+    setDeleteTarget(null);
   }
 
   async function refreshUnits() {
@@ -231,6 +234,35 @@ export default function Materials() {
           onSave={handleSave}
           onEdit={() => setDrawer((current) => ({ ...current, mode: "edit" }))}
         />
+      )}
+      {deleteTarget && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 40, backgroundColor: "rgba(0,0,0,0.5)" }}
+            onClick={() => setDeleteTarget(null)}
+          />
+          <div
+            style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 50, width: "26rem", maxWidth: "calc(100vw - 2rem)" }}
+            className="bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-foreground">Delete Material</h2>
+            </div>
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-sm text-foreground">
+                Are you sure you want to delete <span className="font-medium">{deleteTarget.name}</span>?
+              </p>
+            </div>
+            <div className="px-5 py-4 border-t border-border flex gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button size="sm" variant="destructive" onClick={confirmDeleteMaterial}>
+                Delete Material
+              </Button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
