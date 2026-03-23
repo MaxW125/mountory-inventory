@@ -144,6 +144,8 @@ def get_products():
                 "sell_price": str(row[4]),
                 "is_listed": bool(row[5]),
                 "unit_cost": str(row[6]),
+                "created_at": row[7].isoformat() if row[7] else None,
+                "listed_at": row[8].isoformat() if row[8] else None,
             }
         )
 
@@ -268,6 +270,7 @@ def get_materials():
                 "brand": row[8],
                 "finish": row[9],
                 "unit": row[10],
+                "created_at": row[11].isoformat() if row[11] else None,
             }
         )
 
@@ -478,6 +481,7 @@ def get_purchase_orders():
                 "ordered_date": row[4].isoformat() if row[4] else None,
                 "received_date": row[5].isoformat() if row[5] else None,
                 "total_cost": str(row[6]),
+                "created_at": row[7].isoformat() if row[7] else None,
             }
         )
 

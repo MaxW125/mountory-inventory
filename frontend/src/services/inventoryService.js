@@ -24,6 +24,26 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+function formatActivityTime(value) {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString();
+}
+
 // Products
 export async function getProducts() {
   return fetchJson('/api/products');
@@ -270,11 +290,86 @@ export async function removePurchaseOrderItem(poId, materialId) {
 
 export async function getOpenOrderCount() {
   const orders = await getPurchaseOrders();
-  return orders.filter((order) => order.status === 'Draft' || order.status === 'Ordered').length;
+  return orders.filter((order) => order.status === 'Ordered').length;
 }
 
 export async function getRecentActivity() {
-  return [];
+  const [products, materials, purchaseOrders] = await Promise.all([
+    getProducts(),
+    getMaterials(),
+    getPurchaseOrders(),
+  ]);
+
+  const activities = [];
+
+  for (const order of purchaseOrders) {
+    if (order.created_at) {
+      activities.push({
+        id: `po-created-${order.id}`,
+        action: 'Purchase order created',
+        detail: `${order.po_number || 'Draft PO'}${order.supplier ? ` · ${order.supplier}` : ''}`,
+        sortValue: order.created_at,
+        time: formatActivityTime(order.created_at),
+      });
+    }
+
+    if (order.status === 'Received' && order.received_date) {
+      activities.push({
+        id: `po-received-${order.id}`,
+        action: 'Material restocked',
+        detail: `${order.po_number || 'Draft PO'}${order.supplier ? ` · ${order.supplier}` : ''}`,
+        sortValue: order.received_date,
+        time: formatActivityTime(order.received_date),
+      });
+    }
+  }
+
+  for (const product of products) {
+    if (product.created_at) {
+      activities.push({
+        id: `product-created-${product.id}`,
+        action: 'Product added',
+        detail: `${product.name}${product.sku ? ` · ${product.sku}` : ''}`,
+        sortValue: product.created_at,
+        time: formatActivityTime(product.created_at),
+      });
+    }
+
+    if (product.is_listed && product.listed_at) {
+      activities.push({
+        id: `product-listed-${product.id}`,
+        action: 'Product listed',
+        detail: `${product.name}${product.sku ? ` · ${product.sku}` : ''}`,
+        sortValue: product.listed_at,
+        time: formatActivityTime(product.listed_at),
+      });
+    }
+  }
+
+  for (const material of materials) {
+    if (material.created_at) {
+      activities.push({
+        id: `material-created-${material.id}`,
+        action: 'Material added',
+        detail: `${material.name}${material.color ? ` · ${material.color}` : ''}`,
+        sortValue: material.created_at,
+        time: formatActivityTime(material.created_at),
+      });
+    }
+  }
+
+  const twoDaysAgo = Date.now() - (2 * 24 * 60 * 60 * 1000);
+
+  return activities
+    .filter((activity) => {
+      const time = new Date(activity.sortValue).getTime();
+      return !Number.isNaN(time) && time >= twoDaysAgo;
+    })
+    .sort((a, b) => new Date(b.sortValue).getTime() - new Date(a.sortValue).getTime())
+    .map((activity) => ({
+      ...activity,
+      timestamp: activity.sortValue,
+    }));
 }
 
 export async function deleteMaterial(materialId) {

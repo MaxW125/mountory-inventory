@@ -23,6 +23,27 @@ import {
   getRecentActivity,
 } from "@/services/inventoryService";
 
+function formatActivityTime(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMs < 0) return "Just now";
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString();
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState({
     listedProducts: 0,
@@ -33,6 +54,7 @@ export default function Dashboard() {
   });
   const [lowStockItems, setLowStockItems] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     async function load() {
@@ -58,6 +80,14 @@ export default function Dashboard() {
     load();
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowTick(Date.now());
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="space-y-8">
       <PageHeader title="Dashboard" subtitle="Mountory Inventory overview" />
@@ -77,18 +107,22 @@ export default function Dashboard() {
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <h2 className="text-sm font-semibold text-foreground">Recent Activity</h2>
           </div>
-          <ul className="divide-y divide-border">
-            {activity.map((a) => (
-              <li key={a.id} className="flex items-start gap-3 px-5 py-3.5">
-                <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-primary/40" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">{a.action}</p>
-                  <p className="text-xs text-muted-foreground truncate">{a.detail}</p>
-                </div>
-                <span className="shrink-0 text-xs text-muted-foreground">{a.time}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="max-h-[360px] overflow-y-auto">
+            <ul className="divide-y divide-border">
+              {activity.map((a) => (
+                <li key={a.id} className="flex items-start gap-3 px-5 py-3.5 min-h-[72px]">
+                  <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-primary/40" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{a.action}</p>
+                    <p className="text-xs text-muted-foreground truncate">{a.detail}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {a.action === "Low stock alert" ? "Current" : formatActivityTime(a.timestamp)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </Card>
 
         {/* Low Stock Alerts */}

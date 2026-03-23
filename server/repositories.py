@@ -20,7 +20,8 @@ def list_materials():
             reorder_point,
             brand,
             finish,
-            unit
+            unit,
+            created_at
         FROM materials
         ORDER BY id;
     """
@@ -404,7 +405,9 @@ def list_products():
             p.department,
             p.sell_price,
             p.is_listed,
-            COALESCE(SUM(pm.qty_per_unit * m.cost_per_unit), 0) AS unit_cost
+            COALESCE(SUM(pm.qty_per_unit * m.cost_per_unit), 0) AS unit_cost,
+            p.created_at,
+            p.listed_at
         FROM products p
         LEFT JOIN product_materials pm ON pm.product_id = p.id
         LEFT JOIN materials m ON m.id = pm.material_id
@@ -414,7 +417,9 @@ def list_products():
             p.name,
             p.department,
             p.sell_price,
-            p.is_listed
+            p.is_listed,
+            p.created_at,
+            p.listed_at
         ORDER BY p.id;
     """
 
@@ -453,13 +458,18 @@ def set_product_listed(product_id: int, is_listed: bool):
     """Update whether a product is actively listed/sellable."""
     sql = """
         UPDATE products
-        SET is_listed = %s
+        SET
+            is_listed = %s,
+            listed_at = CASE
+                WHEN %s = TRUE AND listed_at IS NULL THEN NOW()
+                ELSE listed_at
+            END
         WHERE id = %s;
     """
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (is_listed, product_id))
+            cur.execute(sql, (is_listed, is_listed, product_id))
             conn.commit()
 
 
@@ -709,7 +719,8 @@ def list_purchase_orders():
             po.status,
             po.ordered_date,
             po.received_date,
-            COALESCE(SUM(poi.quantity_ordered * poi.unit_cost), 0) AS total_cost
+            COALESCE(SUM(poi.quantity_ordered * poi.unit_cost), 0) AS total_cost,
+            po.created_at
         FROM purchase_orders po
         LEFT JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
         GROUP BY
@@ -718,7 +729,8 @@ def list_purchase_orders():
             po.supplier,
             po.status,
             po.ordered_date,
-            po.received_date
+            po.received_date,
+            po.created_at
         ORDER BY po.id;
     """
 
