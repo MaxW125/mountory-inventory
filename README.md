@@ -1,33 +1,69 @@
 # Mountory Inventory
 
-Mountory Inventory is a purpose-built full-stack inventory system for managing products and materials for my 3D printing shop (**Mountory**).
+Mountory Inventory is a purpose-built full-stack inventory system for managing products, materials, and purchasing workflows for my 3D printing shop (**Mountory**).
 
-The project intentionally uses a **minimal, transparent tech stack** to demonstrate backend fundamentals, data modeling, and clean API design without hiding logic behind heavy frameworks or ORMs. What started as a generic inventory demo was deliberately pivoted into a real operational tool used to track filament, hardware, and sellable products.
+The project intentionally uses a **minimal, transparent backend stack** to demonstrate backend fundamentals, relational data modeling, and clean API design without hiding logic behind heavy frameworks or ORMs. What started as a generic inventory demo was deliberately evolved into a real operational tool for tracking filament, hardware, packaging supplies, sellable products, and purchase orders.
 
 ---
 
-## Features (V1)
+## Features
 
 ### Products
-- Create products with:
+- Create and manage products with:
   - SKU
   - Name
-  - Price
-- View all products in a live table
+  - Department
+  - Sell price
+  - Listed / unlisted status
+- Attach materials directly to products through a BOM (bill of materials)
+- View products in live tables with detail and edit drawers
+- Product cost and margin-related foundations via BOM-linked material cost
 
 ### Materials
 - Track materials including:
-  - Filament (brand, color, type, finish, quantity)
-  - Hardware (screws, magnets, etc.)
+  - Filament
+  - Hardware
   - Packaging and miscellaneous supplies
-- Quantity on hand tracking
-- Supports different units (grams, pieces, etc.)
+- Store:
+  - quantity on hand
+  - reorder point
+  - cost per unit
+  - supplier
+  - brand / finish / type / color
+  - unit of measure
+- Low-stock alerts and inventory health classification
 
-### System
-- PostgreSQL-backed persistence
-- Clean repository layer using raw SQL
-- REST API via FastAPI
-- Lightweight frontend using vanilla JavaScript
+### Purchase Orders
+- Create and manage purchase orders
+- Add line items directly to purchase orders
+- Track:
+  - PO number
+  - supplier
+  - status
+  - ordered date
+  - received date
+  - total cost
+- Validate purchase-order workflow rules by status
+- Track received purchase orders as restocking events in dashboard activity
+
+### Dashboard / Insights
+- Dashboard stat cards for:
+  - listed products
+  - total materials
+  - low stock
+  - open orders
+  - inventory value
+- Recent activity feed powered by real inventory events
+- Insights page for inventory health:
+  - low stock
+  - near reorder
+  - overstocked
+  - healthy
+ 
+### Settings
+- Basic settings page with workspace/profile placeholders
+- Dark mode support
+- Settings structure ready for future authentication and user preferences
 
 ---
 
@@ -39,13 +75,14 @@ The project intentionally uses a **minimal, transparent tech stack** to demonstr
 - psycopg (raw SQL, no ORM)
 
 ### Frontend
-- HTML
-- CSS
-- Vanilla JavaScript (`fetch` API)
+- React
+- Vite
+- Tailwind CSS
+- Component-based UI with a frontend service layer using `fetch`
 
 ### Database
 - PostgreSQL
-- Handwritten SQL schema
+- Custom SQL schema
 - Explicit constraints and indexes
 
 ---
@@ -54,10 +91,9 @@ The project intentionally uses a **minimal, transparent tech stack** to demonstr
 
 - **PostgreSQL** stores all application data
 - **Raw SQL repositories** isolate all database access
-- **FastAPI** exposes REST endpoints and serves the frontend
-- **Vanilla JS frontend** communicates with the API using `fetch()`
-
-The system is intentionally simple, readable, and easy to extend.
+- **FastAPI** exposes REST API endpoints
+- **React frontend** consumes the API through a centralized service layer
+- Frontend and backend run separately in local development
 
 ---
 
@@ -65,19 +101,22 @@ The system is intentionally simple, readable, and easy to extend.
 
 ```text
 mountory-inventory/
+  frontend/
+    src/
+      components/        # Shared UI and feature components
+      layout/            # Layout components
+      pages/             # Top-level app pages
+      services/          # Frontend API/data layer
   server/
-    main.py            # FastAPI app and routes
-    db.py              # PostgreSQL connection helpers
-    repositories.py    # Raw SQL queries
-    schema.sql         # Database schema
-  web/
-    templates/
-      index.html       # Main UI
-    static/
-      app.js           # Frontend logic
-      styles.css       # Styling
-  docker-compose.yml  # PostgreSQL container
-  requirements.txt
+    init/                # First-run DB initialization scripts
+    main.py              # FastAPI app and API routes
+    db.py                # PostgreSQL connection helpers
+    repositories.py      # Raw SQL repository layer
+    schema.sql           # Full reset / rebuild schema
+    bootstrap.sql        # Safe repeatable schema updater
+  web/                   # Legacy server-rendered frontend assets
+  docker-compose.yml     # PostgreSQL container
+  requirements.txt       # Backend dependencies
   README.md
 ```
 
@@ -88,6 +127,7 @@ mountory-inventory/
 ### Prerequisites
 - Python 3.11+
 - Docker
+- Node.js + npm
 - Git
 
 ---
@@ -119,24 +159,39 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install dependencies:
+Install backend dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-Run the server:
+Install frontend dependencies:
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+Run the backend server:
 ```bash
 python3 -m uvicorn server.main:app --reload
 ```
 
-Open in browser:
-```
-http://127.0.0.1:8000/
+In a second terminal, run the frontend:
+```bash
+cd frontend
+npm run dev
 ```
 
-### Shutting down:
+Open the frontend using the local URL shown by Vite in the terminal output, typically:
+```text
+http://127.0.0.1:5173
+or
+http://localhost:5173/
+```
 
-When you are done, stop the server in the terminal with:
+### Shutting Down
+
+When you are done, stop the backend and frontend servers in their terminals with:
 ```bash
 Ctrl + C
 ```
@@ -153,15 +208,42 @@ deactivate
 
 ---
 
-## API Endpoints (V1)
+## API Endpoints
 
 ### Products
 - `GET /api/products`
 - `POST /api/products`
+- `PATCH /api/products/{product_id}`
+- `DELETE /api/products/{product_id}`
+- `PATCH /api/products/{product_id}/listed`
+- `GET /api/products/{product_id}/materials`
+- `POST /api/products/{product_id}/materials`
+- `DELETE /api/products/{product_id}/materials/{material_id}`
 
 ### Materials
 - `GET /api/materials`
 - `POST /api/materials`
+- `PATCH /api/materials/{material_id}`
+- `DELETE /api/materials/{material_id}`
+
+### Product Departments
+- `GET /api/product-departments`
+- `POST /api/product-departments`
+- `DELETE /api/product-departments/{department_id}`
+
+### Material Units
+- `GET /api/material-units`
+- `POST /api/material-units`
+- `DELETE /api/material-units/{unit_id}`
+
+### Purchase Orders
+- `GET /api/purchase-orders`
+- `POST /api/purchase-orders`
+- `PATCH /api/purchase-orders/{po_id}`
+- `DELETE /api/purchase-orders/{po_id}`
+- `GET /api/purchase-orders/{po_id}/items`
+- `POST /api/purchase-orders/{po_id}/items`
+- `DELETE /api/purchase-orders/{po_id}/items/{material_id}`
 
 ---
 
@@ -173,6 +255,7 @@ This project emphasizes:
 - Explicit SQL over ORMs
 - Clear separation of concerns
 - Predictable data flow
+- Readable, extensible backend architecture
 - Production-minded schema design
 
 The goal is correctness, clarity, and extensibility over abstraction.
@@ -182,13 +265,13 @@ The goal is correctness, clarity, and extensibility over abstraction.
 ## TODO
 
 - Add authentication
-- Migrate frontend to React
-- Attach materials directly to products (join table)
+- Set up a deployment pipeline
 - Automatically deduct material inventory when products are sold
-- Cost calculation per product
-- Profit tracking
-- Low-stock alerts and reorder thresholds
-- Deployment pipeline
+- Expand profit tracking features
+- Add an orders page for customer orders and fulfillment
+- When a purchase order is marked as received, add quantity to material stock
+- Fix unit conversion between product BOM usage and material stock units
+- Allow custom thresholds for low stock, near reorder, overstock, and healthy in Insights
 
 ---
 

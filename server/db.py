@@ -1,12 +1,14 @@
+import os
 import psycopg
 
 
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "inventory_db",
-    "user": "inventory_user",
-    "password": "inventory_password",
+    "host": os.getenv("DB_HOST", "localhost"),
+    "port": int(os.getenv("DB_PORT", "5432")),
+    "dbname": os.getenv("DB_NAME", "inventory_db"),
+    "user": os.getenv("DB_USER", "inventory_user"),
+    "password": os.getenv("DB_PASSWORD", "inventory_password"),
+    "sslmode": os.getenv("DB_SSLMODE", "disable"),
 }
 
 

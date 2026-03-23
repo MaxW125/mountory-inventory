@@ -1,12 +1,5 @@
--- Mountory Inventory schema (current MVP)
-
-DROP TABLE IF EXISTS purchase_order_items CASCADE;
-DROP TABLE IF EXISTS purchase_orders CASCADE;
-DROP TABLE IF EXISTS product_materials CASCADE;
-DROP TABLE IF EXISTS product_departments CASCADE;
-DROP TABLE IF EXISTS material_units CASCADE;
-DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS materials CASCADE;
+-- Mountory Inventory initial schema
+-- This file is intended for first-time database initialization only.
 
 -- Lookup tables
 CREATE TABLE product_departments (
@@ -92,3 +85,12 @@ CREATE INDEX idx_purchase_order_items_po
 
 CREATE INDEX idx_purchase_order_items_material
   ON purchase_order_items(material_id);
+
+-- Seed data for better first-run UX
+INSERT INTO material_units (name)
+VALUES ('g'), ('kg'), ('pcs'), ('ft'), ('in')
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO product_departments (name)
+VALUES ('Home Decor'), ('Organization'), ('Accessories'), ('Seasonal')
+ON CONFLICT (name) DO NOTHING;
