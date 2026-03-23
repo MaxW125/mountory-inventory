@@ -87,6 +87,16 @@ The project intentionally uses a **minimal, transparent backend stack** to demon
 
 ---
 
+## Deployment
+
+- **Frontend:** Vercel
+- **Backend:** Render
+- **Database:** Neon Postgres
+
+The live demo uses a shared hosted environment for demonstration purposes.
+
+---
+
 ## Architecture Overview
 
 - **PostgreSQL** stores all application data
