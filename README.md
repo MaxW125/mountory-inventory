@@ -259,7 +259,6 @@ This project emphasizes:
 - Production-minded schema design
 
 The goal is correctness, clarity, and extensibility over abstraction.
-
 ---
 
 ## TODO
