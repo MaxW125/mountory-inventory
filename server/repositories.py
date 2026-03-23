@@ -7,19 +7,21 @@ import json
 # -----------------------------
 
 def list_materials():
-    """Return all materials (filament + other supplies)."""
+    """Return all materials."""
     sql = """
         SELECT
             id,
             name,
-            category,
+            type,
             color,
             quantity_on_hand,
-            unit,
             cost_per_unit,
+            supplier,
+            reorder_point,
             brand,
-            type,
-            finish
+            finish,
+            unit,
+            created_at
         FROM materials
         ORDER BY id;
     """
@@ -34,29 +36,49 @@ def list_materials():
 
 def create_material(
     name,
-    category,
+    type,
     color,
     quantity_on_hand=0,
-    unit="pcs",
     cost_per_unit=0,
+    supplier=None,
+    reorder_point=0,
     brand=None,
-    type=None,
     finish=None,
+    unit=None
 ):
-    """Insert a new material. Returns the new material id."""
+    """Insert a new material. Returns the existing id if a duplicate already exists, otherwise the new material id."""
+    normalized_name = (name or "").strip()
+    normalized_type = (type or "Other").strip()
+    normalized_color = (color or "N/A").strip()
+    normalized_brand = (brand or "").strip() or None
+    normalized_finish = (finish or "").strip() or None
+    normalized_unit = (unit or "").strip() or None
+
+    existing = find_material(
+        name=normalized_name,
+        type=normalized_type,
+        color=normalized_color,
+        brand=normalized_brand,
+        finish=normalized_finish,
+        unit=normalized_unit,
+    )
+    if existing:
+        return existing[0]
+
     sql = """
         INSERT INTO materials (
             name,
-            category,
+            type,
             color,
             quantity_on_hand,
-            unit,
             cost_per_unit,
+            supplier,
+            reorder_point,
             brand,
-            type,
-            finish
+            finish,
+            unit
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id;
     """
 
@@ -64,7 +86,18 @@ def create_material(
         with conn.cursor() as cur:
             cur.execute(
                 sql,
-                (name, category, color, quantity_on_hand, unit, cost_per_unit, brand, type, finish),
+                (
+                    normalized_name,
+                    normalized_type,
+                    normalized_color,
+                    quantity_on_hand,
+                    cost_per_unit,
+                    supplier,
+                    reorder_point,
+                    normalized_brand,
+                    normalized_finish,
+                    normalized_unit,
+                ),
             )
             material_id = cur.fetchone()[0]
             conn.commit()
@@ -74,29 +107,31 @@ def create_material(
 
 def update_material(
     material_id: int,
-    category,
     name,
+    type,
     color,
     quantity_on_hand,
-    unit,
     cost_per_unit,
+    supplier=None,
+    reorder_point=0,
     brand=None,
-    type=None,
     finish=None,
+    unit=None,
 ):
     """Update an existing material row."""
     sql = """
         UPDATE materials
         SET
-            category = %s,
             name = %s,
+            type = %s,
             color = %s,
             quantity_on_hand = %s,
-            unit = %s,
             cost_per_unit = %s,
+            supplier = %s,
+            reorder_point = %s,
             brand = %s,
-            type = %s,
-            finish = %s
+            finish = %s,
+            unit = %s
         WHERE id = %s;
     """
 
@@ -105,129 +140,256 @@ def update_material(
             cur.execute(
                 sql,
                 (
-                    category,
                     name,
+                    type,
                     color,
                     quantity_on_hand,
-                    unit,
                     cost_per_unit,
+                    supplier,
+                    reorder_point,
                     brand,
-                    type,
                     finish,
+                    unit,
                     material_id,
                 ),
             )
             conn.commit()
 
 
-def find_material(category, name, color, brand=None, type=None, finish=None):
-    """Find a material by its identity fields. Returns the row or None."""
-    # Identity rule for V1:
-    # - FILAMENT: match category+name+color+brand+type+finish
-    # - Non-filament: match category+name+color (brand/type/finish ignored)
-    if (category or "").upper() == "FILAMENT":
-        sql = """
-            SELECT
-                id,
-                name,
-                category,
-                color,
-                quantity_on_hand,
-                unit,
-                cost_per_unit,
-                brand,
-                type,
-                finish
-            FROM materials
-            WHERE category = %s
-              AND name = %s
-              AND color = %s
-              AND COALESCE(brand, '') = COALESCE(%s, '')
-              AND COALESCE(type, '') = COALESCE(%s, '')
-              AND COALESCE(finish, '') = COALESCE(%s, '')
-            LIMIT 1;
-        """
-        params = (category, name, color, brand, type, finish)
-    else:
-        sql = """
-            SELECT
-                id,
-                name,
-                category,
-                color,
-                quantity_on_hand,
-                unit,
-                cost_per_unit,
-                brand,
-                type,
-                finish
-            FROM materials
-            WHERE category = %s
-              AND name = %s
-              AND color = %s
-            LIMIT 1;
-        """
-        params = (category, name, color)
+def delete_material(material_id: int):
+    """Delete a material row."""
+    sql = """
+        DELETE FROM materials
+        WHERE id = %s;
+    """
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            cur.execute(sql, (material_id,))
+            conn.commit()
+
+
+def count_products_using_material(material_id: int):
+    """Return how many product BOM rows currently reference a material."""
+    sql = """
+        SELECT COUNT(*)
+        FROM product_materials
+        WHERE material_id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (material_id,))
+            count = cur.fetchone()[0]
+
+    return count
+
+
+def list_products_using_material(material_id: int):
+    """Return product ids and names for products whose BOM references a material."""
+    sql = """
+        SELECT DISTINCT
+            p.id,
+            p.name
+        FROM product_materials pm
+        JOIN products p ON p.id = pm.product_id
+        WHERE pm.material_id = %s
+        ORDER BY LOWER(p.name), p.id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (material_id,))
+            rows = cur.fetchall()
+
+    return rows
+
+
+def find_material(name, type, color, brand=None, finish=None, unit=None):
+    """Find a material by name + type + color + brand + finish + unit. Returns the row or None."""
+    sql = """
+        SELECT
+            id,
+            name,
+            type,
+            color,
+            quantity_on_hand,
+            cost_per_unit,
+            supplier,
+            reorder_point,
+            brand,
+            finish,
+            unit
+        FROM materials
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+          AND LOWER(TRIM(type)) = LOWER(TRIM(%s))
+          AND LOWER(TRIM(color)) = LOWER(TRIM(%s))
+          AND LOWER(TRIM(COALESCE(brand, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+          AND LOWER(TRIM(COALESCE(finish, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+          AND LOWER(TRIM(COALESCE(unit, ''))) = LOWER(TRIM(COALESCE(%s, '')))
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name, type, color, brand, finish, unit))
             row = cur.fetchone()
 
     return row
 
 
 def find_or_create_material(material):
-    """Upsert-like helper used during product creation.
-
-    Expects a dict with keys:
-      - category, name, color
-      - optional: quantity_on_hand, unit, cost_per_unit
-      - filament optional: brand, type, finish
-
-    Returns: material_id
-    """
-    category = (material.get("category") or "OTHER").strip().upper()
+    """Find an existing material or create it."""
     name = (material.get("name") or "").strip()
+    type = (material.get("type") or "Other").strip()
     color = (material.get("color") or "N/A").strip()
 
     if not name:
         raise ValueError("Material name is required")
 
-    brand = (material.get("brand") or None)
-    mtype = (material.get("type") or None)
-    finish = (material.get("finish") or None)
-
-    # Defaults
     quantity_on_hand = material.get("quantity_on_hand", 0)
-    unit = material.get("unit")
-    if not unit:
-        unit = "g" if category == "FILAMENT" else "pcs"
     cost_per_unit = material.get("cost_per_unit", 0)
+    supplier = material.get("supplier")
+    reorder_point = material.get("reorder_point", 0)
+    brand = (material.get("brand") or "").strip() or None
+    finish = (material.get("finish") or "").strip() or None
+    unit = (material.get("unit") or "").strip() or None
 
     existing = find_material(
-        category=category,
         name=name,
+        type=type,
         color=color,
         brand=brand,
-        type=mtype,
         finish=finish,
+        unit=unit,
     )
     if existing:
         return existing[0]
 
     return create_material(
         name=name,
-        category=category,
+        type=type,
         color=color,
         quantity_on_hand=quantity_on_hand,
-        unit=unit,
         cost_per_unit=cost_per_unit,
-        brand=brand if category == "FILAMENT" else None,
-        type=mtype if category == "FILAMENT" else None,
-        finish=finish if category == "FILAMENT" else None,
+        supplier=supplier,
+        reorder_point=reorder_point,
+        brand=brand,
+        finish=finish,
+        unit=unit,
     )
 
+# -----------------------------
+# Material Units
+# -----------------------------
+
+def list_material_units():
+    """Return all allowed material units."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM material_units
+        ORDER BY LOWER(name), id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    return rows
+
+
+def get_material_unit_by_id(unit_id: int):
+    """Return one material unit row by id, or None."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM material_units
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (unit_id,))
+            row = cur.fetchone()
+
+    return row
+
+
+def find_material_unit_by_name(name: str):
+    """Return one material unit row by name (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM material_units
+        WHERE LOWER(name) = LOWER(%s)
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name,))
+            row = cur.fetchone()
+
+    return row
+
+
+def create_material_unit(name: str):
+    """Create a material unit if it does not already exist. Returns the unit id."""
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        raise ValueError("Unit name is required")
+
+    existing = find_material_unit_by_name(normalized_name)
+    if existing:
+        return existing[0]
+
+    sql = """
+        INSERT INTO material_units (name)
+        VALUES (%s)
+        RETURNING id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (normalized_name,))
+            unit_id = cur.fetchone()[0]
+            conn.commit()
+
+    return unit_id
+
+
+def count_materials_using_unit(name: str):
+    """Return how many materials currently use a unit name."""
+    sql = """
+        SELECT COUNT(*)
+        FROM materials
+        WHERE LOWER(unit) = LOWER(%s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name,))
+            count = cur.fetchone()[0]
+
+    return count
+
+
+def delete_material_unit(unit_id: int):
+    """Delete one material unit row by id."""
+    sql = """
+        DELETE FROM material_units
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (unit_id,))
+            conn.commit()
 
 # -----------------------------
 # Products
@@ -240,10 +402,12 @@ def list_products():
             p.id,
             p.sku,
             p.name,
-            p.price,
+            p.department,
+            p.sell_price,
             p.is_listed,
             COALESCE(SUM(pm.qty_per_unit * m.cost_per_unit), 0) AS unit_cost,
-            p.materials_input
+            p.created_at,
+            p.listed_at
         FROM products p
         LEFT JOIN product_materials pm ON pm.product_id = p.id
         LEFT JOIN materials m ON m.id = pm.material_id
@@ -251,9 +415,11 @@ def list_products():
             p.id,
             p.sku,
             p.name,
-            p.price,
+            p.department,
+            p.sell_price,
             p.is_listed,
-            p.materials_input
+            p.created_at,
+            p.listed_at
         ORDER BY p.id;
     """
 
@@ -265,31 +431,15 @@ def list_products():
     return rows
 
 
-def create_product(sku, name, price, materials_used=None, is_listed=True):
-    """Create a product.
-
-    - Inserts a product row (sku, name, price, is_listed)
-    - If materials_used is provided (list of dicts), the function will:
-        1) ensure each material exists (auto-add into materials table)
-        2) store the original list into products.materials_input (JSON text)
-
-    Returns: product_id
-    """
-    materials_used = materials_used or []
-
-    # Auto-add materials first (so product create fails early if invalid material entries)
-    for m in materials_used:
-        find_or_create_material(m)
-
-    materials_input = json.dumps(materials_used)
-
+def create_product(sku, name, department, sell_price, is_listed=True):
+    """Create a product row and return its id."""
     sql = """
         INSERT INTO products (
             sku,
             name,
-            price,
-            is_listed,
-            materials_input
+            department,
+            sell_price,
+            is_listed
         )
         VALUES (%s, %s, %s, %s, %s)
         RETURNING id;
@@ -297,7 +447,7 @@ def create_product(sku, name, price, materials_used=None, is_listed=True):
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (sku, name, price, is_listed, materials_input))
+            cur.execute(sql, (sku, name, department, sell_price, is_listed))
             product_id = cur.fetchone()[0]
             conn.commit()
 
@@ -308,15 +458,198 @@ def set_product_listed(product_id: int, is_listed: bool):
     """Update whether a product is actively listed/sellable."""
     sql = """
         UPDATE products
-        SET is_listed = %s
+        SET
+            is_listed = %s,
+            listed_at = CASE
+                WHEN %s = TRUE AND listed_at IS NULL THEN NOW()
+                ELSE listed_at
+            END
         WHERE id = %s;
     """
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (is_listed, product_id))
+            cur.execute(sql, (is_listed, is_listed, product_id))
             conn.commit()
 
+
+def update_product(product_id: int, sku, name, department, sell_price, is_listed):
+    """Update core product fields."""
+    sql = """
+        UPDATE products
+        SET
+            sku = %s,
+            name = %s,
+            department = %s,
+            sell_price = %s,
+            is_listed = %s
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (sku, name, department, sell_price, is_listed, product_id))
+            conn.commit()
+
+
+# -----------------------------
+# Delete Product and its BOM
+# -----------------------------
+
+def delete_product(product_id: int):
+    """Delete a product row and any BOM rows linked to it."""
+    delete_bom_sql = """
+        DELETE FROM product_materials
+        WHERE product_id = %s;
+    """
+
+    delete_product_sql = """
+        DELETE FROM products
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(delete_bom_sql, (product_id,))
+            cur.execute(delete_product_sql, (product_id,))
+            conn.commit()
+
+
+# -----------------------------
+# Product Departments
+# -----------------------------
+
+def list_product_departments():
+    """Return all allowed product departments."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM product_departments
+        ORDER BY LOWER(name), id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    return rows
+
+
+def get_product_department_by_id(department_id: int):
+    """Return one product department row by id, or None."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM product_departments
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (department_id,))
+            row = cur.fetchone()
+
+    return row
+
+
+def find_product_department_by_name(name: str):
+    """Return one product department row by name (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            name
+        FROM product_departments
+        WHERE LOWER(name) = LOWER(%s)
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name,))
+            row = cur.fetchone()
+
+    return row
+
+
+def create_product_department(name: str):
+    """Create a product department if it does not already exist. Returns the department id."""
+    normalized_name = " ".join((name or "").strip().split())
+    normalized_name = normalized_name.title()
+    if not normalized_name:
+        raise ValueError("Department name is required")
+
+    existing = find_product_department_by_name(normalized_name)
+    if existing:
+        return existing[0]
+
+    sql = """
+        INSERT INTO product_departments (name)
+        VALUES (%s)
+        RETURNING id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (normalized_name,))
+            department_id = cur.fetchone()[0]
+            conn.commit()
+
+    return department_id
+
+
+def count_products_using_department(name: str):
+    """Return how many products currently use a department name."""
+    sql = """
+        SELECT COUNT(*)
+        FROM products
+        WHERE LOWER(department) = LOWER(%s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (name,))
+            count = cur.fetchone()[0]
+
+    return count
+
+
+def delete_product_department(department_id: int):
+    """Delete one product department row by id."""
+    sql = """
+        DELETE FROM product_departments
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (department_id,))
+            conn.commit()
+
+
+def find_product_by_sku(sku: str):
+    """Return one product row by SKU (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            sku,
+            name,
+            department,
+            sell_price,
+            is_listed
+        FROM products
+        WHERE LOWER(TRIM(sku)) = LOWER(TRIM(%s))
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (sku,))
+            row = cur.fetchone()
+
+    return row
 
 # -----------------------------
 # Product BOM (recipe)
@@ -327,7 +660,7 @@ def list_product_materials(product_id: int):
     sql = """
         SELECT
             pm.material_id,
-            m.category,
+            m.type,
             m.name,
             m.color,
             m.unit,
@@ -335,7 +668,7 @@ def list_product_materials(product_id: int):
         FROM product_materials pm
         JOIN materials m ON m.id = pm.material_id
         WHERE pm.product_id = %s
-        ORDER BY m.category, m.name, m.color;
+        ORDER BY m.type, m.name, m.color;
     """
 
     with get_connection() as conn:
@@ -369,4 +702,174 @@ def delete_product_material(product_id: int, material_id: int):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (product_id, material_id))
+            conn.commit()
+
+
+# -----------------------------
+# Purchase Orders
+# -----------------------------
+
+def list_purchase_orders():
+    """Return all purchase orders with computed total_cost."""
+    sql = """
+        SELECT
+            po.id,
+            po.po_number,
+            po.supplier,
+            po.status,
+            po.ordered_date,
+            po.received_date,
+            COALESCE(SUM(poi.quantity_ordered * poi.unit_cost), 0) AS total_cost,
+            po.created_at
+        FROM purchase_orders po
+        LEFT JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
+        GROUP BY
+            po.id,
+            po.po_number,
+            po.supplier,
+            po.status,
+            po.ordered_date,
+            po.received_date,
+            po.created_at
+        ORDER BY po.id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    return rows
+
+
+def create_purchase_order(po_number, supplier, status="Draft", ordered_date=None, received_date=None):
+    """Create a purchase order row and return its id."""
+    sql = """
+        INSERT INTO purchase_orders (
+            po_number,
+            supplier,
+            status,
+            ordered_date,
+            received_date
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_number, supplier, status, ordered_date, received_date))
+            po_id = cur.fetchone()[0]
+            conn.commit()
+
+    return po_id
+
+
+def update_purchase_order(po_id: int, po_number, supplier, status, ordered_date=None, received_date=None):
+    """Update core purchase order fields."""
+    sql = """
+        UPDATE purchase_orders
+        SET
+            po_number = %s,
+            supplier = %s,
+            status = %s,
+            ordered_date = %s,
+            received_date = %s
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_number, supplier, status, ordered_date, received_date, po_id))
+            conn.commit()
+
+
+def delete_purchase_order(po_id: int):
+    """Delete a purchase order row. Line items cascade automatically."""
+    sql = """
+        DELETE FROM purchase_orders
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id,))
+            conn.commit()
+
+
+def find_purchase_order_by_number(po_number: str):
+    """Return one purchase order row by PO number (case-insensitive), or None."""
+    sql = """
+        SELECT
+            id,
+            po_number,
+            supplier,
+            status,
+            ordered_date,
+            received_date
+        FROM purchase_orders
+        WHERE LOWER(TRIM(po_number)) = LOWER(TRIM(%s))
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_number,))
+            row = cur.fetchone()
+
+    return row
+
+
+def list_purchase_order_items(po_id: int):
+    """Return all line items for one purchase order."""
+    sql = """
+        SELECT
+            poi.material_id,
+            m.name,
+            m.type,
+            m.color,
+            m.unit,
+            poi.quantity_ordered,
+            poi.unit_cost
+        FROM purchase_order_items poi
+        JOIN materials m ON m.id = poi.material_id
+        WHERE poi.purchase_order_id = %s
+        ORDER BY m.type, m.name, m.color;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id,))
+            rows = cur.fetchall()
+
+    return rows
+
+
+def upsert_purchase_order_item(po_id: int, material_id: int, quantity_ordered, unit_cost):
+    """Add or update one material line on a purchase order."""
+    sql = """
+        INSERT INTO purchase_order_items (purchase_order_id, material_id, quantity_ordered, unit_cost)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (purchase_order_id, material_id)
+        DO UPDATE SET
+            quantity_ordered = EXCLUDED.quantity_ordered,
+            unit_cost = EXCLUDED.unit_cost;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id, material_id, quantity_ordered, unit_cost))
+            conn.commit()
+
+
+def delete_purchase_order_item(po_id: int, material_id: int):
+    """Remove one material line from a purchase order."""
+    sql = """
+        DELETE FROM purchase_order_items
+        WHERE purchase_order_id = %s AND material_id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (po_id, material_id))
             conn.commit()
