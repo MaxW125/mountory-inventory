@@ -62,8 +62,8 @@ The project intentionally uses a **minimal, transparent backend stack** to demon
  
 ### Settings
 - Basic settings page with workspace/profile placeholders
-- Dark mode toggle
-- Auth-friendly structure for future expansion
+- Dark mode support
+- Settings structure ready for future authentication and user preferences
 
 ---
 
@@ -100,7 +100,24 @@ The project intentionally uses a **minimal, transparent backend stack** to demon
 ## Project Structure
 
 ```text
-// TODO Update project structure
+mountory-inventory/
+  frontend/
+    src/
+      components/        # Shared UI and feature components
+      layout/            # Layout components
+      pages/             # Top-level app pages
+      services/          # Frontend API/data layer
+  server/
+    init/                # First-run DB initialization scripts
+    main.py              # FastAPI app and API routes
+    db.py                # PostgreSQL connection helpers
+    repositories.py      # Raw SQL repository layer
+    schema.sql           # Full reset / rebuild schema
+    bootstrap.sql        # Safe repeatable schema updater
+  web/                   # Legacy server-rendered frontend assets
+  docker-compose.yml     # PostgreSQL container
+  requirements.txt       # Backend dependencies
+  README.md
 ```
 
 ---
@@ -166,13 +183,13 @@ npm run dev
 ```
 
 Open the frontend using the local URL shown by Vite in the terminal output, typically:
-```
+```text
 http://127.0.0.1:5173
 or
 http://localhost:5173/
 ```
 
-### Shutting down:
+### Shutting Down
 
 When you are done, stop the backend and frontend servers in their terminals with:
 ```bash

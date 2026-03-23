@@ -124,9 +124,9 @@ def normalize_material_payload(payload: dict):
     }
 
 
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/")
+def home():
+    return {"ok": True, "service": "Mountory Inventory API"}
 
 
 @app.get("/api/products")
