@@ -17,7 +17,7 @@ The project intentionally uses a **minimal, transparent backend stack** to demon
   - Listed / unlisted status
 - Attach materials directly to products through a BOM (bill of materials)
 - View products in live tables with detail and edit drawers
-- Product cost and margin-related foundations via BOM-linked material cost
+- Product cost and margin foundations via BOM-linked material cost
 
 ### Materials
 - Track materials including:
@@ -103,10 +103,17 @@ The project intentionally uses a **minimal, transparent backend stack** to demon
 mountory-inventory/
   frontend/
     src/
-      components/        # Shared UI and feature components
-      layout/            # Layout components
+      components/        # UI components
+      hooks/             # Custom React hooks
+      lib/               # Shared frontend helpers
       pages/             # Top-level app pages
       services/          # Frontend API/data layer
+      utils/             # Utility functions
+    index.html
+    package.json
+    vite.config.js
+    tailwind.config.js
+    vercel.json
   server/
     init/                # First-run DB initialization scripts
     main.py              # FastAPI app and API routes
@@ -114,8 +121,7 @@ mountory-inventory/
     repositories.py      # Raw SQL repository layer
     schema.sql           # Full reset / rebuild schema
     bootstrap.sql        # Safe repeatable schema updater
-  web/                   # Legacy server-rendered frontend assets
-  docker-compose.yml     # PostgreSQL container
+  docker-compose.yml     # Local PostgreSQL container
   requirements.txt       # Backend dependencies
   README.md
 ```
@@ -123,6 +129,18 @@ mountory-inventory/
 ---
 
 ## Getting Started
+
+### Live Demo
+
+A hosted version of the app is available here:
+
+```text
+https://mountory-inventory.vercel.app/
+```
+
+---
+
+### Local Development
 
 ### Prerequisites
 - Python 3.11+
@@ -187,6 +205,22 @@ Open the frontend using the local URL shown by Vite in the terminal output, typi
 http://127.0.0.1:5173
 or
 http://localhost:5173/
+```
+
+### Existing Local Database
+
+If you already have a local database from an older version of the project, run the bootstrap script to apply safe schema updates without wiping your data:
+```bash
+docker compose exec -T postgres psql -U inventory_user -d inventory_db < server/bootstrap.sql
+```
+
+### Full Local Reset
+
+To completely rebuild the local database from scratch:
+
+```bash
+docker compose down -v
+docker compose up -d
 ```
 
 ### Shutting Down
@@ -259,12 +293,13 @@ This project emphasizes:
 - Production-minded schema design
 
 The goal is correctness, clarity, and extensibility over abstraction.
+
 ---
 
 ## TODO
 
 - Add authentication
-- Set up a deployment pipeline
+- Separate hosted demo/user data so each environment or user does not share the same database
 - Automatically deduct material inventory when products are sold
 - Expand profit tracking features
 - Add an orders page for customer orders and fulfillment

@@ -1,9 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from starlette.requests import Request
-import json
 from fastapi.middleware.cors import CORSMiddleware
 from server.repositories import (
     list_products,
@@ -56,12 +51,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Static files (JS/CSS)
-app.mount("/static", StaticFiles(directory="web/static"), name="static")
-
-# Templates (HTML)
-templates = Jinja2Templates(directory="web/templates")
 
 
 def normalize_material_payload(payload: dict):
